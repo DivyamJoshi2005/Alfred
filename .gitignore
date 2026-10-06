@@ -1,0 +1,99 @@
+# ============================================================
+# ALFRED — Production .gitignore
+# ============================================================
+
+# Helper & Diagnostic Test Suites
+helpers/
+backend/helpers/
+test_*.py
+*.test.py
+
+# Video, Audio & Presentation Media (Test footage & generated cutdowns)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.mp3
+*.wav
+*.aac
+*.m4a
+*.ogg
+*.flac
+*.pptx
+*.pptx.pdf
+projects/
+output/
+renders/
+exports/
+temp/
+tmp/
+
+# AI Model Binaries & Weight Checkpoints (Downloaded dynamically on setup)
+models/
+*.onnx
+*.bin
+*.pt
+*.pth
+*.safetensors
+*.cache/
+.cache/
+
+# Node & Frontend Build Artifacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Python & Virtual Environments
+.venv/
+backend/.venv/
+venv/
+env/
+__pycache__/
+backend/__pycache__/
+*/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Rust / Tauri Build Artifacts
+src-tauri/target/
+target/
+src-tauri/gen/schemas/
+
+# Database & Runtime State
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+alfred.db
+backend/alfred.db
+
+# Logs
+logs/
+*.log
+
+# Editor & OS Metadata
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+scratch/
