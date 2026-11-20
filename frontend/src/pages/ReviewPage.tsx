@@ -4,8 +4,6 @@ import {
   CheckCircle, 
   XCircle, 
   Play, 
-  RefreshCw, 
-  Mic, 
   ChevronDown, 
   ChevronUp, 
   Clock, 
@@ -20,21 +18,13 @@ import {
   Activity,
   Volume2,
   Flame,
-  Zap,
-  Scissors
+  Zap
 } from 'lucide-react'
 import { jobs as jobsApi, clips as clipsApi, schedule as scheduleApi, settings as settingsApi } from '../lib/api'
 import type { Job, Clip } from '../lib/types'
 import { formatTime, cn } from '../lib/utils'
 import { Modal } from '../components/Modal'
-
-const VOICE_PRESET_NAMES: Record<string, string> = {
-  af_heart: 'Heart (Warm & Engaging)',
-  af_bella: 'Bella (Clear & Upbeat)',
-  af_nicole: 'Nicole (Relaxed & Natural)',
-  am_adam: 'Adam (Confident & Direct)',
-  am_michael: 'Michael (Deep & Grounded)',
-}
+import { ClipTimelineEditor } from '../components/ClipTimelineEditor'
 
 export function ReviewPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -648,352 +638,29 @@ export function ReviewPage() {
                     </div>
 
                     {/* Expandable Fine-tune Drawer */}
-                    {isExpanded && (() => {
-                      const currentStart = trimStarts[clip.id] ?? clip.start_time
-                      const currentEnd = trimEnds[clip.id] ?? clip.end_time
-                      const currentDuration = Math.max(0.1, currentEnd - currentStart)
-                      const currentAudioMode = audioModes[clip.id] || clip.audio_mode || 'original'
-                      const currentHookOffset = hookOffsets[clip.id] ?? clip.hook_offset_sec ?? 0.0
-                      const minStart = Math.max(0, Math.floor(clip.start_time - 30))
-                      const maxEnd = Math.ceil(clip.end_time + 30)
-
-                      return (
-                        <div className="bg-stone-50/80 border-t border-border p-5 space-y-6 animate-fade-in">
-                          {/* 1. Active Sound Profile Banner */}
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-surface border border-border text-xs shadow-2xs">
-                            <div className="flex items-center gap-2">
-                              <span className="p-1 rounded-md bg-accent-light text-accent">
-                                <Mic size={13} />
-                              </span>
-                              <div>
-                                <span className="font-semibold text-text">Active Sound Profile: </span>
-                                {activeSoundProfile.cloningEnabled ? (
-                                  <span className="text-accent font-medium">
-                                    Cloned Voice ({activeSoundProfile.sampleName || 'User Recording'})
-                                  </span>
-                                ) : (
-                                  <span className="text-text-secondary font-medium">
-                                    {VOICE_PRESET_NAMES[activeSoundProfile.preset] || activeSoundProfile.preset}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <a
-                              href="/settings"
-                              className="text-[11px] font-semibold text-accent hover:underline flex items-center gap-1 self-start sm:self-auto cursor-pointer"
-                            >
-                              Manage in Settings &rarr;
-                            </a>
-                          </div>
-
-                          {/* 2. Clip Boundaries & Duration Sliders ("Adjusting Clip") */}
-                          <div className="p-4 rounded-xl bg-white border border-border shadow-xs space-y-3.5">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Scissors size={14} className="text-accent" />
-                                <h4 className="text-xs font-semibold uppercase tracking-wider text-text">
-                                  Clip Boundary & Duration Sliders
-                                </h4>
-                              </div>
-                              <span className={cn(
-                                "px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-tight",
-                                currentDuration >= 15 && currentDuration <= 60
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-amber-50 text-amber-700 border border-amber-200"
-                              )}>
-                                {currentDuration.toFixed(1)}s Duration {currentDuration >= 15 && currentDuration <= 60 ? '• Optimal Short' : ''}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                              {/* Start Time Slider */}
-                              <div className="space-y-1.5 bg-stone-50/70 p-3 rounded-lg border border-border/70">
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-text-secondary font-medium">Start Timestamp:</span>
-                                  <span className="font-mono font-semibold text-text">
-                                    {formatTime(currentStart)} ({currentStart.toFixed(1)}s)
-                                  </span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={minStart}
-                                  max={Math.max(minStart, currentEnd - 2.0)}
-                                  step="0.1"
-                                  value={currentStart}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value)
-                                    setTrimStarts(prev => ({ ...prev, [clip.id]: val }))
-                                  }}
-                                  className="w-full accent-accent cursor-pointer"
-                                />
-                                <div className="flex items-center justify-between gap-1 pt-1">
-                                  <span className="text-[10px] text-text-muted">Nudge Start:</span>
-                                  <div className="flex gap-1">
-                                    {[-1.0, -0.2, 0.2, 1.0].map((delta) => (
-                                      <button
-                                        key={delta}
-                                        type="button"
-                                        onClick={() => {
-                                          const next = Math.max(0, Math.min(currentEnd - 2.0, currentStart + delta))
-                                          setTrimStarts(prev => ({ ...prev, [clip.id]: parseFloat(next.toFixed(1)) }))
-                                        }}
-                                        className="px-1.5 py-0.5 rounded text-[10px] bg-white border border-border hover:bg-stone-100 text-text font-mono cursor-pointer"
-                                      >
-                                        {delta > 0 ? `+${delta}s` : `${delta}s`}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* End Time Slider */}
-                              <div className="space-y-1.5 bg-stone-50/70 p-3 rounded-lg border border-border/70">
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-text-secondary font-medium">End Timestamp:</span>
-                                  <span className="font-mono font-semibold text-text">
-                                    {formatTime(currentEnd)} ({currentEnd.toFixed(1)}s)
-                                  </span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={currentStart + 2.0}
-                                  max={maxEnd}
-                                  step="0.1"
-                                  value={currentEnd}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value)
-                                    setTrimEnds(prev => ({ ...prev, [clip.id]: val }))
-                                  }}
-                                  className="w-full accent-accent cursor-pointer"
-                                />
-                                <div className="flex items-center justify-between gap-1 pt-1">
-                                  <span className="text-[10px] text-text-muted">Nudge End:</span>
-                                  <div className="flex gap-1">
-                                    {[-1.0, -0.2, 0.2, 1.0].map((delta) => (
-                                      <button
-                                        key={delta}
-                                        type="button"
-                                        onClick={() => {
-                                          const next = Math.max(currentStart + 2.0, currentEnd + delta)
-                                          setTrimEnds(prev => ({ ...prev, [clip.id]: parseFloat(next.toFixed(1)) }))
-                                        }}
-                                        className="px-1.5 py-0.5 rounded text-[10px] bg-white border border-border hover:bg-stone-100 text-text font-mono cursor-pointer"
-                                      >
-                                        {delta > 0 ? `+${delta}s` : `${delta}s`}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* 3. Audio Track Mode Selection Cards */}
-                          <div className="space-y-2.5">
-                            <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                              Audio Track Mode
-                            </label>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                              {/* Option 1: Original Sound Only */}
-                              <div
-                                onClick={() => setAudioModes(prev => ({ ...prev, [clip.id]: 'original' }))}
-                                className={cn(
-                                  "p-3 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between",
-                                  currentAudioMode === 'original'
-                                    ? "border-accent bg-accent-light/35 ring-1 ring-accent"
-                                    : "border-border bg-white hover:border-stone-400"
-                                )}
-                              >
-                                <div className="flex items-center justify-between mb-1.5">
-                                  <div className="flex items-center gap-1.5 font-semibold text-xs text-text">
-                                    <Volume2 size={13} className="text-accent" />
-                                    Original Video Sound Only
-                                  </div>
-                                  {currentAudioMode === 'original' && <Check size={14} className="text-accent shrink-0" />}
-                                </div>
-                                <p className="text-[11px] text-text-muted leading-relaxed">
-                                  Pure original source audio. Zero AI voiceovers, overlays, or volume ducking.
-                                </p>
-                              </div>
-
-                              {/* Option 2: Intro Hook Voiceover */}
-                              <div
-                                onClick={() => setAudioModes(prev => ({ ...prev, [clip.id]: 'intro_hook' }))}
-                                className={cn(
-                                  "p-3 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between",
-                                  currentAudioMode === 'intro_hook'
-                                    ? "border-accent bg-accent-light/35 ring-1 ring-accent"
-                                    : "border-border bg-white hover:border-stone-400"
-                                )}
-                              >
-                                <div className="flex items-center justify-between mb-1.5">
-                                  <div className="flex items-center gap-1.5 font-semibold text-xs text-text">
-                                    <Sparkles size={13} className="text-accent" />
-                                    Intro Hook Voiceover
-                                  </div>
-                                  {currentAudioMode === 'intro_hook' && <Check size={14} className="text-accent shrink-0" />}
-                                </div>
-                                <p className="text-[11px] text-text-muted leading-relaxed">
-                                  Spoken hook plays at 0:00 start. Source video audio ducks to 15% and smoothly restores.
-                                </p>
-                              </div>
-
-                              {/* Option 3: Full Voiceover / Timeline Placement */}
-                              <div
-                                onClick={() => setAudioModes(prev => ({ ...prev, [clip.id]: 'custom_voiceover' }))}
-                                className={cn(
-                                  "p-3 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between",
-                                  currentAudioMode === 'custom_voiceover'
-                                    ? "border-accent bg-accent-light/35 ring-1 ring-accent"
-                                    : "border-border bg-white hover:border-stone-400"
-                                )}
-                              >
-                                <div className="flex items-center justify-between mb-1.5">
-                                  <div className="flex items-center gap-1.5 font-semibold text-xs text-text">
-                                    <Sliders size={13} className="text-accent" />
-                                    Full Voiceover (Timeline Slider)
-                                  </div>
-                                  {currentAudioMode === 'custom_voiceover' && <Check size={14} className="text-accent shrink-0" />}
-                                </div>
-                                <p className="text-[11px] text-text-muted leading-relaxed">
-                                  Place the spoken hook anywhere along the timeline with custom audio ducking.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* 4. Timeline Slider for Custom Voiceover */}
-                          {currentAudioMode === 'custom_voiceover' && (
-                            <div className="p-4 rounded-xl bg-accent-light/25 border border-accent/30 space-y-2.5 animate-fade-in">
-                              <div className="flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-1.5 font-semibold text-text">
-                                  <Sliders size={13} className="text-accent" />
-                                  Voiceover Audio Timeline Placement
-                                </div>
-                                <span className="font-mono font-bold text-accent px-2.5 py-0.5 rounded-md bg-white border border-accent/20">
-                                  Trigger at {currentHookOffset.toFixed(1)}s
-                                </span>
-                              </div>
-                              <input
-                                type="range"
-                                min="0.0"
-                                max={Math.max(0, currentDuration - 2.5)}
-                                step="0.1"
-                                value={currentHookOffset}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value)
-                                  setHookOffsets(prev => ({ ...prev, [clip.id]: val }))
-                                }}
-                                className="w-full accent-accent cursor-pointer"
-                              />
-                              <div className="flex items-center justify-between text-[11px] text-text-muted">
-                                <span>0.0s (Start)</span>
-                                <div className="flex gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => setHookOffsets(prev => ({ ...prev, [clip.id]: 0.0 }))}
-                                    className="px-2 py-0.5 rounded bg-white border border-border text-[10px] hover:bg-stone-100 font-medium cursor-pointer"
-                                  >
-                                    At Start (0.0s)
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setHookOffsets(prev => ({ ...prev, [clip.id]: 1.5 }))}
-                                    className="px-2 py-0.5 rounded bg-white border border-border text-[10px] hover:bg-stone-100 font-medium cursor-pointer"
-                                  >
-                                    +1.5s
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setHookOffsets(prev => ({ ...prev, [clip.id]: parseFloat((currentDuration / 2).toFixed(1)) }))}
-                                    className="px-2 py-0.5 rounded bg-white border border-border text-[10px] hover:bg-stone-100 font-medium cursor-pointer"
-                                  >
-                                    Midpoint ({(currentDuration / 2).toFixed(1)}s)
-                                  </button>
-                                </div>
-                                <span>{(Math.max(0, currentDuration - 2.5)).toFixed(1)}s</span>
-                              </div>
-                              <p className="text-[11px] text-text-secondary italic">
-                                * The voiceover speaks at {currentHookOffset.toFixed(1)}s. Source video sound ducks automatically during speech and returns to full volume.
-                              </p>
-                            </div>
-                          )}
-
-                          {/* 5. Hook Text Customization & Spoken Audio Generation */}
-                          {currentAudioMode !== 'original' && (
-                            <div className="space-y-2 animate-fade-in">
-                              <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                                Spoken Hook Text & Script
-                              </label>
-                              <textarea
-                                rows={2}
-                                value={editHooks[clip.id] || ''}
-                                onChange={(e) => setEditHooks(prev => ({ ...prev, [clip.id]: e.target.value }))}
-                                placeholder="Write a snappy hook line..."
-                                className="w-full text-xs p-3 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-1 focus:ring-accent"
-                              />
-                              <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSaveHookText(clip.id)}
-                                    className="px-2.5 py-1 text-xs rounded-md bg-stone-200 text-text font-medium hover:bg-stone-300 transition-colors cursor-pointer"
-                                  >
-                                    Save Hook Text
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSynthesizeVoice(clip)}
-                                    disabled={synthesizingId === clip.id}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-md bg-accent-light text-accent font-semibold hover:bg-rose-100 transition-colors disabled:opacity-50 cursor-pointer"
-                                  >
-                                    {synthesizingId === clip.id ? (
-                                      <Loader2 size={12} className="animate-spin" />
-                                    ) : (
-                                      <Mic size={12} />
-                                    )}
-                                    Generate Spoken Voiceover
-                                  </button>
-                                </div>
-
-                                {clip.hook_audio_path && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[11px] text-text-muted">Audio preview:</span>
-                                    <audio
-                                      controls
-                                      src={`/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`}
-                                      className="h-7 w-48"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 6. Apply Changes & Re-render */}
-                          <div className="pt-2">
-                            <button
-                              type="button"
-                              onClick={() => handleReRender(clip)}
-                              disabled={rerenderingId === clip.id}
-                              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
-                            >
-                              {rerenderingId === clip.id ? (
-                                <>
-                                  <Loader2 size={14} className="animate-spin" />
-                                  Re-rendering Clip with FFmpeg (Boundary Cut & Audio Processing)...
-                                </>
-                              ) : (
-                                <>
-                                  <RefreshCw size={14} />
-                                  Apply Timing & Audio Settings (Re-render Clip)
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })()}
+                    {isExpanded && (
+                      <ClipTimelineEditor
+                        clip={clip}
+                        videoPath={selectedJob?.video_path || ''}
+                        renderedPath={clip.output_path}
+                        activeSoundProfile={activeSoundProfile}
+                        startTime={trimStarts[clip.id] ?? clip.start_time}
+                        endTime={trimEnds[clip.id] ?? clip.end_time}
+                        audioMode={audioModes[clip.id] || clip.audio_mode || 'original'}
+                        hookOffsetSec={hookOffsets[clip.id] ?? clip.hook_offset_sec ?? 0.0}
+                        hookText={editHooks[clip.id] ?? clip.hook_text ?? ''}
+                        onStartTimeChange={(time) => setTrimStarts(prev => ({ ...prev, [clip.id]: time }))}
+                        onEndTimeChange={(time) => setTrimEnds(prev => ({ ...prev, [clip.id]: time }))}
+                        onAudioModeChange={(mode) => setAudioModes(prev => ({ ...prev, [clip.id]: mode }))}
+                        onHookOffsetChange={(offset) => setHookOffsets(prev => ({ ...prev, [clip.id]: offset }))}
+                        onHookTextChange={(text) => setEditHooks(prev => ({ ...prev, [clip.id]: text }))}
+                        onSaveHookText={() => handleSaveHookText(clip.id)}
+                        onSynthesizeVoice={() => handleSynthesizeVoice(clip)}
+                        onRerender={() => handleReRender(clip)}
+                        isSynthesizing={synthesizingId === clip.id}
+                        isRerendering={rerenderingId === clip.id}
+                      />
+                    )}
                   </div>
                 )
               })}

@@ -52,6 +52,12 @@ Check all models' local readiness anytime via `GET /api/settings/models`.
    - **Clip Boundary Adjustment Sliders**: Interactive start and end sliders with live optimal short duration badge and micro-nudge controls (`-1.0s`, `-0.2s`, `+0.2s`, `+1.0s`).
    - **Active Sound Profile Synchronization**: Automatically synthesizes and re-renders hooks using the active voice preset or cloned voice profile selected in Settings.
 
+6. **Professional NLE Multi-Track Sequencer & Live Video Preview** (`components/ClipTimelineEditor.tsx`):
+   - **Live Synchronized Video Monitor**: Real-time video frame scrubbing as start/end trim sliders or voiceover placement sliders are adjusted.
+   - **Multi-Track Sequencer Deck**: Visual timecode ruler, Video Track (V1) with storyboard thumbnails, and Voice Hook Track (A1) with interactive draggable audio block.
+   - **Strict Hook Placement Constraint**: Voice hook block is strictly constrained within clip boundaries (`0 <= offset <= clip_duration - hook_duration`), preventing voiceover bleed past clip end.
+   - **Live In-Browser Audio-Mixed Preview**: Plays video with real-time background ducking (to 15%) synchronized with spoken hook audio playback.
+
 ---
 
 ## Quickstart
