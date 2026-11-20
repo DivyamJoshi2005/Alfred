@@ -45,6 +45,7 @@ export function ReviewPage() {
   const [hookOffsets, setHookOffsets] = useState<Record<string, number>>({})
   const [rerenderingId, setRerenderingId] = useState<string | null>(null)
   const [synthesizingId, setSynthesizingId] = useState<string | null>(null)
+  const [renderTimestamps, setRenderTimestamps] = useState<Record<string, number>>({})
 
   // Sound Profile from Settings
   const [activeSoundProfile, setActiveSoundProfile] = useState<{
@@ -205,6 +206,7 @@ export function ReviewPage() {
       setTrimEnds(prev => ({ ...prev, [clip.id]: updated.end_time }))
       setAudioModes(prev => ({ ...prev, [clip.id]: updated.audio_mode || audio_mode }))
       setHookOffsets(prev => ({ ...prev, [clip.id]: updated.hook_offset_sec ?? hook_offset_sec }))
+      setRenderTimestamps(prev => ({ ...prev, [clip.id]: Date.now() }))
       alert('Clip re-rendered successfully with your custom timing and audio settings!')
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Re-rendering failed')
@@ -643,6 +645,7 @@ export function ReviewPage() {
                         clip={clip}
                         videoPath={selectedJob?.video_path || ''}
                         renderedPath={clip.output_path}
+                        renderTimestamp={renderTimestamps[clip.id] || 0}
                         activeSoundProfile={activeSoundProfile}
                         startTime={trimStarts[clip.id] ?? clip.start_time}
                         endTime={trimEnds[clip.id] ?? clip.end_time}
@@ -680,7 +683,7 @@ export function ReviewPage() {
           <div className="space-y-4">
             <div className="aspect-9/16 max-h-[60vh] mx-auto bg-black rounded-lg overflow-hidden flex items-center justify-center shadow-lg">
               <video
-                src={`/api/media?path=${encodeURIComponent(previewClip.output_path || '')}`}
+                src={`/api/media?path=${encodeURIComponent(previewClip.output_path || '')}&t=${renderTimestamps[previewClip.id] || previewClip.created_at || '1'}`}
                 controls
                 autoPlay
                 className="w-full h-full object-contain"
