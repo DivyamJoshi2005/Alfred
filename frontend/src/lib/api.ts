@@ -65,12 +65,22 @@ export const jobs = {
 // ── Clips ───────────────────────────────────────────────
 export const clips = {
   listForJob: (jobId: string) => request<import('./types').Clip[]>(`/api/clips/job/${jobId}`),
-  update: (clipId: string, data: Partial<{ status: string; hook_text: string; start_time: number; end_time: number }>) =>
+  update: (clipId: string, data: Partial<{ status: string; hook_text: string; start_time: number; end_time: number; audio_mode: string; hook_offset_sec: number }>) =>
     request<import('./types').Clip>(`/api/clips/${clipId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  rerender: (clipId: string, data: { start_time?: number; end_time?: number; framing_mode?: string; audio_mode?: string; hook_text?: string }) =>
+  rerender: (clipId: string, data: {
+    start_time?: number
+    end_time?: number
+    framing_mode?: string
+    audio_mode?: string
+    hook_text?: string
+    hook_offset_sec?: number
+    voice_preset?: string
+    use_cloned_voice?: boolean
+    reference_sample_name?: string
+  }) =>
     request<import('./types').Clip>(`/api/clips/${clipId}/rerender`, {
       method: 'POST',
       body: JSON.stringify(data),

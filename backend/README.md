@@ -45,6 +45,13 @@ Check all models' local readiness anytime via `GET /api/settings/models`.
    - `face_focus`: Kinetic 9:16 smart crop tracked by YOLOv8n-face.
    - Byte-range video streaming support (`Accept-Ranges: bytes`, `GET` & `HEAD` methods).
 
+5. **Interactive Clip Fine-Tuning & Audio Track Modes** (`pipeline/assembler.py`, `routers/clips.py`):
+   - **Original Video Sound Only (`original`)**: Pure source audio with zero voiceovers, zero overlays, zero ducking.
+   - **Intro Hook Voiceover (`intro_hook`)**: Spoken hook plays at clip start (t=0.0s) with calibrated background ducking and smooth recovery.
+   - **Timeline Voiceover (`custom_voiceover`)**: Interactive timeline slider (`hook_offset_sec`) allowing creators to place the spoken hook anywhere on the clip timeline with dynamic window ducking.
+   - **Clip Boundary Adjustment Sliders**: Interactive start and end sliders with live optimal short duration badge and micro-nudge controls (`-1.0s`, `-0.2s`, `+0.2s`, `+1.0s`).
+   - **Active Sound Profile Synchronization**: Automatically synthesizes and re-renders hooks using the active voice preset or cloned voice profile selected in Settings.
+
 ---
 
 ## Quickstart

@@ -204,12 +204,13 @@ sequenceDiagram
     Ingest-->>User: Auto-transition to Editorial Review Console
 
     User->>Review: Inspect side-by-side (16:9 Master vs 9:16 Smartphone preview)
-    User->>Review: Nudge in/out points on Jog Deck (-1s / +1s)
-    User->>Review: Select Framing Mode (Canvas Fit / Stacked Split / Face Focus)
-    User->>Review: Select Audio Mode (Clean Dialogue / Pre-roll / Ducked)
-    User->>Review: Click "Apply & Re-Render Cut"
+    User->>Review: Adjust Clip Boundaries with Start/End Sliders & Micro-Nudge buttons
+    User->>Review: Select Audio Mode (Original Sound Only / Intro Hook at Start / Timeline Voiceover)
+    User->>Review: Slide Voiceover Timeline Placement (if using Timeline Voiceover)
+    User->>Review: Synchronize with Settings Sound Profile (Kokoro Presets or OpenVoice Cloned Sample)
+    User->>Review: Click "Apply Timing & Audio Settings (Re-render Clip)"
     Review->>Backend: POST /api/clips/{id}/rerender
-    Backend-->>Review: Clip re-assembled with custom boundaries
+    Backend-->>Review: Clip re-assembled with custom boundaries & calibrated ducking
 
     User->>Review: Click "Approve Cut"
     User->>Schedule: Schedule to Social Broadcast (YouTube, IG, TikTok, LinkedIn, X)

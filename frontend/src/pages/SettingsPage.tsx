@@ -48,6 +48,7 @@ export function SettingsPage() {
   // Voice & Audio
   const [voicePreset, setVoicePreset] = useState('af_heart')
   const [voiceCloningEnabled, setVoiceCloningEnabled] = useState(false)
+  const [selectedVoiceSample, setSelectedVoiceSample] = useState<string | null>(null)
   const [voiceSamples, setVoiceSamples] = useState<VoiceSample[]>([])
   const [uploadingVoice, setUploadingVoice] = useState(false)
   const [sampleName, setSampleName] = useState('')
@@ -194,6 +195,12 @@ export function SettingsPage() {
       const s = appSettings as Record<string, string>
       if (s.voice_preset) setVoicePreset(s.voice_preset)
       if (s.voice_cloning_enabled) setVoiceCloningEnabled(s.voice_cloning_enabled === 'true')
+      if (s.selected_voice_sample) {
+        setSelectedVoiceSample(s.selected_voice_sample)
+      } else if (samples.length > 0) {
+        const firstWithEmbedding = samples.find(sm => sm.has_embedding)
+        if (firstWithEmbedding) setSelectedVoiceSample(firstWithEmbedding.name)
+      }
       if (s.output_directory) setOutputDir(s.output_directory)
     } catch (err) {
       console.error('Failed to load settings', err)
@@ -252,6 +259,19 @@ export function SettingsPage() {
     }
   }
 
+  const handleSelectVoiceSample = async (sampleName: string) => {
+    setSelectedVoiceSample(sampleName)
+    try {
+      await settingsApi.update({
+        selected_voice_sample: sampleName,
+        voice_cloning_enabled: 'true',
+      })
+      setVoiceCloningEnabled(true)
+    } catch (err: unknown) {
+      console.error('Failed to update active voice sample', err)
+    }
+  }
+
   const handleSaveGeneralSettings = async () => {
     setSavingSettings(true)
     setSaveSuccess(false)
@@ -259,6 +279,7 @@ export function SettingsPage() {
       await settingsApi.update({
         voice_preset: voicePreset,
         voice_cloning_enabled: voiceCloningEnabled ? 'true' : 'false',
+        selected_voice_sample: selectedVoiceSample || '',
         output_directory: outputDir,
       })
       setSaveSuccess(true)
@@ -682,23 +703,43 @@ export function SettingsPage() {
 
             {voiceSamples.length > 0 && (
               <div className="divide-y divide-border pt-2">
-                {voiceSamples.map((sample, i) => (
-                  <div key={i} className="py-2.5 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <Mic size={14} className="text-accent" />
-                      <span className="font-medium text-text">{sample.name}</span>
+                {voiceSamples.map((sample, i) => {
+                  const isSelected = selectedVoiceSample === sample.name && voiceCloningEnabled
+                  return (
+                    <div key={i} className="py-2.5 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <Mic size={14} className={isSelected ? "text-accent" : "text-text-muted"} />
+                        <span className="font-medium text-text">{sample.name}</span>
+                        {isSelected && (
+                          <span className="text-[10px] bg-accent-light text-accent border border-accent/20 px-2 py-0.5 rounded-full font-bold">
+                            Active Voice Profile
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {sample.has_embedding ? (
+                          <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium border border-emerald-200">
+                            Embedding Ready
+                          </span>
+                        ) : (
+                          <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
+                            Raw Audio
+                          </span>
+                        )}
+
+                        {sample.has_embedding && !isSelected && (
+                          <button
+                            type="button"
+                            onClick={() => handleSelectVoiceSample(sample.name)}
+                            className="px-2.5 py-1 text-[11px] rounded bg-stone-100 hover:bg-accent hover:text-white transition-colors cursor-pointer text-text font-medium"
+                          >
+                            Set Active
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    {sample.has_embedding ? (
-                      <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium border border-emerald-200">
-                        Embedding Ready
-                      </span>
-                    ) : (
-                      <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
-                        Raw Audio
-                      </span>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

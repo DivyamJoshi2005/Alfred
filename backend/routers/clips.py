@@ -18,6 +18,8 @@ def _row_to_clip_response(row) -> ClipResponse:
         transcript_text=row["transcript_text"],
         hook_text=row["hook_text"],
         hook_audio_path=row["hook_audio_path"],
+        audio_mode=row["audio_mode"] if "audio_mode" in keys and row["audio_mode"] else "original",
+        hook_offset_sec=float(row["hook_offset_sec"]) if "hook_offset_sec" in keys and row["hook_offset_sec"] is not None else 0.0,
         output_path=row["output_path"],
         status=row["status"],
         rationale=row["rationale"],
@@ -80,6 +82,14 @@ async def update_clip(clip_id: str, body: ClipUpdate):
             updates.append("end_time = ?")
             params.append(body.end_time)
 
+        if body.audio_mode is not None:
+            updates.append("audio_mode = ?")
+            params.append(body.audio_mode)
+
+        if body.hook_offset_sec is not None:
+            updates.append("hook_offset_sec = ?")
+            params.append(body.hook_offset_sec)
+
         if body.start_time is not None or body.end_time is not None:
             # Recompute duration
             st = body.start_time if body.start_time is not None else clip["start_time"]
@@ -106,7 +116,7 @@ async def update_clip(clip_id: str, body: ClipUpdate):
 
 @router.post("/{clip_id}/rerender", response_model=ClipResponse)
 async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
-    """Re-render clip with adjusted trim timing, framing mode, and audio mode."""
+    """Re-render clip with adjusted trim timing, framing mode, active sound profile, and audio mode."""
     db = await get_db()
     try:
         cursor = await db.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
@@ -132,6 +142,18 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
         hook_text = body.hook_text if body.hook_text is not None else clip["hook_text"]
         framing_mode = body.framing_mode or "presentation_fit"
 
+        # Determine audio mode: 'original', 'intro_hook', 'custom_voiceover' (or legacy aliases)
+        raw_mode = (body.audio_mode or clip["audio_mode"] or "original").lower().strip()
+        if raw_mode in ("intro_hook", "preroll"):
+            audio_mode = "intro_hook"
+            hook_offset_sec = 0.0
+        elif raw_mode in ("custom_voiceover", "voiceover", "full_voiceover"):
+            audio_mode = "custom_voiceover"
+            hook_offset_sec = max(0.0, float(body.hook_offset_sec if body.hook_offset_sec is not None else (clip["hook_offset_sec"] or 0.0)))
+        else:
+            audio_mode = "original"
+            hook_offset_sec = 0.0
+
         from config import ALFRED_PROJECTS_DIR
         output_path = (
             Path(clip["output_path"])
@@ -139,23 +161,66 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
             else ALFRED_PROJECTS_DIR / job["video_name"] / "clips" / f"clip_{clip['rank']}.mp4"
         )
 
-        # If hook text changed, re-synthesize hook voiceover audio
         hook_audio_path = clip["hook_audio_path"]
-        if hook_text and (hook_text != clip["hook_text"] or not hook_audio_path or not Path(hook_audio_path).exists()):
-            try:
-                from pipeline.tts import get_tts_engine
-                tts = get_tts_engine()
-                clips_dir = ALFRED_PROJECTS_DIR / job["video_name"] / "clips"
-                clips_dir.mkdir(parents=True, exist_ok=True)
-                tts_out = clips_dir / f"hook_{clip['rank']}.wav"
-                tts.synthesize(hook_text, tts_out, voice="af_bella")
-                hook_audio_path = str(tts_out)
-            except Exception as e:
-                print(f"[Rerender] Failed to re-synthesize hook audio: {e}")
 
-        audio_mode = body.audio_mode
-        if not audio_mode:
-            audio_mode = "voiceover" if (hook_audio_path and Path(hook_audio_path).exists()) else "original"
+        # If user selected an audio mode with hook voiceover (intro_hook or custom_voiceover),
+        # ensure synthesized hook audio exists using active sound profile from Settings
+        if audio_mode != "original":
+            # Fetch active sound profile from settings
+            settings_cur = await db.execute("SELECT key, value FROM settings")
+            s_rows = await settings_cur.fetchall()
+            settings_map = {r["key"]: r["value"] for r in s_rows}
+
+            voice_preset = body.voice_preset or settings_map.get("voice_preset", "af_heart")
+            cloning_enabled = (
+                body.use_cloned_voice
+                if body.use_cloned_voice is not None
+                else (settings_map.get("voice_cloning_enabled", "false").lower() == "true")
+            )
+            reference_sample_name = body.reference_sample_name or settings_map.get("selected_voice_sample", None)
+
+            needs_synth = (
+                bool(hook_text) and (
+                    hook_text != clip["hook_text"]
+                    or not hook_audio_path
+                    or not Path(hook_audio_path).exists()
+                    or body.voice_preset is not None
+                    or body.use_cloned_voice is not None
+                )
+            )
+
+            if needs_synth:
+                try:
+                    from pipeline.tts import get_tts_engine
+                    tts = get_tts_engine()
+                    clips_dir = ALFRED_PROJECTS_DIR / job["video_name"] / "clips"
+                    clips_dir.mkdir(parents=True, exist_ok=True)
+                    tts_out = clips_dir / f"hook_{clip['rank']}.wav"
+                    tts.synthesize(hook_text, tts_out, voice=voice_preset)
+                    hook_audio_path = str(tts_out)
+
+                    if cloning_enabled:
+                        try:
+                            from pipeline.voice_cloner import VoiceCloner
+                            cloner = VoiceCloner()
+                            samples = cloner.list_voice_samples()
+                            valid_samples = [s for s in samples if s.get("has_embedding")]
+                            if valid_samples:
+                                ref = valid_samples[0]
+                                if reference_sample_name:
+                                    named = [s for s in valid_samples if s["name"] == reference_sample_name]
+                                    if named:
+                                        ref = named[0]
+                                cloned_wav = clips_dir / f"hook_{clip['rank']}_cloned.wav"
+                                cloner.clone_voice(tts_out, Path(ref["embedding_path"]), cloned_wav)
+                                hook_audio_path = str(cloned_wav)
+                        except Exception as ce:
+                            print(f"[Rerender] Voice cloning notice: {ce}")
+                except Exception as e:
+                    print(f"[Rerender] Failed to synthesize hook audio: {e}")
+        else:
+            # ORIGINAL SOUND ONLY: No voiceovers, overlays, or ducking. Pure source video audio!
+            hook_audio_path = None
 
         from pipeline.assembler import render_single_clip
         await render_single_clip(
@@ -165,16 +230,27 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
             output_path=output_path,
             crop_coords=None,
             hook_audio_path=hook_audio_path,
-            hook_text=hook_text,
+            hook_text=hook_text if audio_mode != "original" else None,
             framing_mode=framing_mode,
             audio_mode=audio_mode,
+            hook_offset_sec=hook_offset_sec,
         )
 
         await db.execute(
             """UPDATE clips
-               SET start_time = ?, end_time = ?, duration = ?, hook_text = ?, hook_audio_path = ?, output_path = ?, status = 'rendered'
+               SET start_time = ?, end_time = ?, duration = ?, hook_text = ?, hook_audio_path = ?, audio_mode = ?, hook_offset_sec = ?, output_path = ?, status = 'rendered'
                WHERE id = ?""",
-            (start_time, end_time, duration, hook_text, str(hook_audio_path) if hook_audio_path else None, str(output_path), clip_id),
+            (
+                start_time,
+                end_time,
+                duration,
+                hook_text,
+                str(hook_audio_path) if hook_audio_path else (clip["hook_audio_path"] if audio_mode != "original" else None),
+                audio_mode,
+                hook_offset_sec,
+                str(output_path),
+                clip_id,
+            ),
         )
         await db.commit()
 
@@ -187,7 +263,7 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
 
 @router.post("/{clip_id}/synthesize-voice")
 async def synthesize_clip_voice(clip_id: str, body: ClipSynthesizeRequest):
-    """Synthesize custom speech or user cloned voice for the clip hook."""
+    """Synthesize speech or cloned voice for the clip hook using active Settings sound profile."""
     db = await get_db()
     try:
         cursor = await db.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
@@ -200,6 +276,19 @@ async def synthesize_clip_voice(clip_id: str, body: ClipSynthesizeRequest):
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
 
+        # Resolve sound profile settings
+        settings_cur = await db.execute("SELECT key, value FROM settings")
+        s_rows = await settings_cur.fetchall()
+        settings_map = {r["key"]: r["value"] for r in s_rows}
+
+        voice_preset = body.voice_preset or settings_map.get("voice_preset", "af_heart")
+        use_cloned = (
+            body.use_cloned_voice
+            if body.use_cloned_voice is not None
+            else (settings_map.get("voice_cloning_enabled", "false").lower() == "true")
+        )
+        sample_name = body.reference_sample_name or settings_map.get("selected_voice_sample", None)
+
         from config import ALFRED_PROJECTS_DIR
         clips_dir = ALFRED_PROJECTS_DIR / job["video_name"] / "clips"
         clips_dir.mkdir(parents=True, exist_ok=True)
@@ -207,18 +296,18 @@ async def synthesize_clip_voice(clip_id: str, body: ClipSynthesizeRequest):
 
         from pipeline.tts import get_tts_engine
         tts = get_tts_engine()
-        tts.synthesize(body.script_text, out_wav, voice=body.voice_preset or "af_heart")
+        tts.synthesize(body.script_text, out_wav, voice=voice_preset)
 
-        # Apply voice cloning if requested
-        if body.use_cloned_voice:
+        # Apply voice cloning if requested or enabled in settings
+        if use_cloned:
             from pipeline.voice_cloner import VoiceCloner
             cloner = VoiceCloner()
             samples = cloner.list_voice_samples()
-            valid_samples = [s for s in samples if s["has_embedding"]]
+            valid_samples = [s for s in samples if s.get("has_embedding")]
             if valid_samples:
                 ref = valid_samples[0]
-                if body.reference_sample_name:
-                    named = [s for s in valid_samples if s["name"] == body.reference_sample_name]
+                if sample_name:
+                    named = [s for s in valid_samples if s["name"] == sample_name]
                     if named:
                         ref = named[0]
                 cloned_wav = clips_dir / f"hook_{clip['rank']}_cloned.wav"

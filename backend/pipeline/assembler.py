@@ -150,6 +150,7 @@ async def render_single_clip(
     hook_text: str | None = None,
     framing_mode: str = "presentation_fit",
     audio_mode: str = "original",
+    hook_offset_sec: float = 0.0,
 ):
     """Render a single clip with specified framing mode, visual hook, and audio mode.
 
@@ -159,11 +160,15 @@ async def render_single_clip(
     - 'face_focus': Kinetic 9:16 smart crop with 1.15x punch-in zoom
 
     Audio Modes:
-    - 'original': Clean unmixed speaker dialogue from the video (No voiceover overlap!)
-    - 'preroll': Hook audio plays as pre-roll buffer, followed by clip dialogue
-    - 'voiceover': Ducks video audio during hook speech
+    - 'original': Pure video sound. Zero voiceovers, overlays, or ducking.
+    - 'intro_hook': Spoken hook voiceover plays at clip start (t=0.0s) with background ducking.
+    - 'custom_voiceover': Custom timeline placement. Hook voiceover starts at hook_offset_sec.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    mode = (audio_mode or "original").lower().strip()
+    offset = max(0.0, float(hook_offset_sec or 0.0))
+    badge_start = offset if mode in ("custom_voiceover", "voiceover", "full_voiceover") else 0.0
+    badge_end = badge_start + 2.8
 
     # 1. Video Filter Construction
     if framing_mode == "presentation_fit":
@@ -173,7 +178,7 @@ async def render_single_clip(
             visual_headline = _format_visual_hook_text(hook_text)
             if visual_headline:
                 drawtext_part = (
-                    f",drawtext=text='{visual_headline}':enable='between(t,0,2.8)':"
+                    f",drawtext=text='{visual_headline}':enable='between(t,{badge_start:.2f},{badge_end:.2f})':"
                     f"fontsize=48:fontcolor=white:box=1:boxcolor=black@0.85:boxborderw=16:"
                     f"x=(w-text_w)/2:y=h*0.12"
                 )
@@ -198,7 +203,7 @@ async def render_single_clip(
             visual_headline = _format_visual_hook_text(hook_text)
             if visual_headline:
                 drawtext_part = (
-                    f",drawtext=text='{visual_headline}':enable='between(t,0,2.8)':"
+                    f",drawtext=text='{visual_headline}':enable='between(t,{badge_start:.2f},{badge_end:.2f})':"
                     f"fontsize=44:fontcolor=white:box=1:boxcolor=black@0.85:boxborderw=16:"
                     f"x=(w-text_w)/2:y=24"
                 )
@@ -225,7 +230,7 @@ async def render_single_clip(
             visual_headline = _format_visual_hook_text(hook_text)
             if visual_headline:
                 drawtext_part = (
-                    f",drawtext=text='{visual_headline}':enable='between(t,0,2.8)':"
+                    f",drawtext=text='{visual_headline}':enable='between(t,{badge_start:.2f},{badge_end:.2f})':"
                     f"fontsize=50:fontcolor=white:box=1:boxcolor=black@0.85:boxborderw=18:"
                     f"x=(w-text_w)/2:y=h*0.22"
                 )
@@ -255,28 +260,40 @@ async def render_single_clip(
         except Exception:
             pass
 
-    if audio_mode == "preroll" and has_hook:
-        cmd.extend(["-i", str(hook_audio_path)])
-        cmd.extend([
-            "-filter_complex",
-            f"{v_filter};[1:a][0:a]concat=n=2:v=0:a=1[a]",
-            "-map", "[v]",
-            "-map", "[a]",
-        ])
-    elif audio_mode == "voiceover" and has_hook:
-        cmd.extend(["-i", str(hook_audio_path)])
-        cmd.extend([
-            "-filter_complex",
-            f"{v_filter};[0:a]volume='if(lt(t,{hook_duck_sec}),0.15,1.0)':eval=frame[ducked];[1:a]apad=pad_len=0[hk];[ducked][hk]amix=inputs=2:duration=first:dropout_transition=2[a]",
-            "-map", "[v]",
-            "-map", "[a]",
-        ])
-    else:
-        # Default: Clean original dialogue (zero voice overlap!)
+    if mode == "original" or not has_hook:
+        # Original sound: absolutely NO voiceovers, no ducking, pure original video sound
         cmd.extend([
             "-filter_complex", v_filter,
             "-map", "[v]",
             "-map", "0:a?",
+        ])
+    elif mode in ("intro_hook", "preroll"):
+        # Intro hook: hook voiceover plays at start (t=0s), original sound ducked during hook
+        cmd.extend(["-i", str(hook_audio_path)])
+        cmd.extend([
+            "-filter_complex",
+            f"{v_filter};[0:a]volume='if(lt(t,{hook_duck_sec:.2f}),0.15,1.0)':eval=frame[ducked];[1:a]apad=pad_len=0[hk];[ducked][hk]amix=inputs=2:duration=first:dropout_transition=2[a]",
+            "-map", "[v]",
+            "-map", "[a]",
+        ])
+    else:
+        # Custom timeline voiceover / full voiceover: user decides placement offset via slider
+        delay_ms = int(round(offset * 1000))
+        duck_start = offset
+        duck_end = offset + hook_duck_sec
+
+        cmd.extend(["-i", str(hook_audio_path)])
+        if delay_ms > 0:
+            hk_filter = f"[1:a]adelay={delay_ms}|{delay_ms},apad=pad_len=0[hk]"
+        else:
+            hk_filter = "[1:a]apad=pad_len=0[hk]"
+
+        duck_filter = f"[0:a]volume='if(between(t,{duck_start:.2f},{duck_end:.2f}),0.15,1.0)':eval=frame[ducked]"
+        cmd.extend([
+            "-filter_complex",
+            f"{v_filter};{duck_filter};{hk_filter};[ducked][hk]amix=inputs=2:duration=first:dropout_transition=2[a]",
+            "-map", "[v]",
+            "-map", "[a]",
         ])
 
     cmd.extend([

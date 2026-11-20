@@ -44,6 +44,8 @@ export interface Clip {
   retention_score?: number
   visual_hook_rationale?: string | null
   storyboard_paths?: string | null
+  audio_mode?: string
+  hook_offset_sec?: number
   created_at: string
 }
 
