@@ -7,7 +7,9 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Loader2, 
-  Filter
+  Filter,
+  RotateCcw,
+  AlertTriangle
 } from 'lucide-react'
 import { schedule as scheduleApi } from '../lib/api'
 import type { ScheduledPost } from '../lib/types'
@@ -27,6 +29,8 @@ export function CalendarPage() {
   const [editDateTime, setEditDateTime] = useState('')
   const [editTags, setEditTags] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
+  const [clearingFailed, setClearingFailed] = useState(false)
 
   const loadScheduledPosts = useCallback(async () => {
     try {
@@ -53,6 +57,40 @@ export function CalendarPage() {
     }
   }
 
+  const handleRetryPost = async (postId: string) => {
+    setRetryingId(postId)
+    try {
+      const updated = await scheduleApi.retry(postId)
+      setPosts(prev => prev.map(p => p.id === postId ? updated : p))
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to retry scheduled upload')
+    } finally {
+      setRetryingId(null)
+    }
+  }
+
+  const handleClearFailed = async () => {
+    if (!window.confirm('Remove all failed posts from your queue?')) return
+    setClearingFailed(true)
+    try {
+      await scheduleApi.clearFailed()
+      setPosts(prev => prev.filter(p => p.status !== 'failed'))
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to clear failed posts')
+    } finally {
+      setClearingFailed(false)
+    }
+  }
+
+  const handleRetryAll = async () => {
+    try {
+      await scheduleApi.retryAll()
+      await loadScheduledPosts()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to retry all posts')
+    }
+  }
+
   const handleOpenEdit = (post: ScheduledPost) => {
     setEditingPost(post)
     setEditTitle(post.title || '')
@@ -73,6 +111,7 @@ export function CalendarPage() {
         description: editDescription,
         tags: editTags,
         scheduled_at: new Date(editDateTime).toISOString(),
+        status: editingPost.status === 'failed' ? 'scheduled' : undefined,
       })
       setPosts(prev => prev.map(p => p.id === editingPost.id ? updated : p))
       setEditingPost(null)
@@ -81,6 +120,19 @@ export function CalendarPage() {
     } finally {
       setSavingEdit(false)
     }
+  }
+
+  const formatErrorMessage = (errorStr: string) => {
+    if (!errorStr) return ''
+    if (errorStr.includes('Executable doesn\'t exist') || errorStr.includes('chrome-headless-shell') || errorStr.includes('playwright install')) {
+      return 'Browser engine setup was needed. Playwright Chromium has been downloaded and verified. Click "Retry Upload" to run.'
+    }
+    if (errorStr.includes('SESSION_EXPIRED') || errorStr.includes('not logged in') || errorStr.includes('connect your') || errorStr.includes('not authenticated')) {
+      return 'Account not logged in: Please connect your account in Settings > Social Accounts first.'
+    }
+    // Clean ASCII banners
+    const clean = errorStr.split('\n').filter(l => !l.includes('║') && !l.includes('╔') && !l.includes('╚')).join(' ').trim()
+    return clean.slice(0, 300)
   }
 
   const filteredPosts = posts.filter(p => {
@@ -142,13 +194,35 @@ export function CalendarPage() {
           <p className="text-xs text-text-secondary mt-0.5">Successfully uploaded clips</p>
         </div>
 
-        <div className="bg-surface rounded-xl border border-border p-4 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-medium text-text-muted">
-            <span>Needs Attention</span>
-            <AlertCircle size={16} className="text-amber-600" />
+        <div className="bg-surface rounded-xl border border-border p-4 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-xs font-medium text-text-muted">
+              <span>Needs Attention</span>
+              <AlertCircle size={16} className={cn(failedCount > 0 ? "text-red-600" : "text-amber-600")} />
+            </div>
+            <p className="text-2xl font-bold text-text mt-2">{failedCount}</p>
+            <p className="text-xs text-text-secondary mt-0.5">Failed attempts</p>
           </div>
-          <p className="text-2xl font-bold text-text mt-2">{failedCount}</p>
-          <p className="text-xs text-text-secondary mt-0.5">Failed attempts (auto-retries up to 3x)</p>
+          {failedCount > 0 && (
+            <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
+              <button
+                onClick={handleRetryAll}
+                className="flex-1 inline-flex items-center justify-center gap-1 py-1 px-2 text-xs font-medium bg-stone-900 text-white rounded-md hover:bg-stone-800 transition-colors shadow-xs"
+              >
+                <RotateCcw size={12} />
+                Retry All
+              </button>
+              <button
+                onClick={handleClearFailed}
+                disabled={clearingFailed}
+                className="inline-flex items-center justify-center gap-1 py-1 px-2 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-md transition-colors"
+                title="Remove failed posts"
+              >
+                <Trash2 size={12} />
+                Clear
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -271,13 +345,39 @@ export function CalendarPage() {
                     )}
 
                     {post.last_error && (
-                      <div className="p-2 text-xs rounded-md bg-red-50 text-red-700 border border-red-200">
-                        Error: {post.last_error}
+                      <div className="p-3 text-xs rounded-lg bg-red-50 text-red-800 border border-red-200/80 space-y-1">
+                        <div className="flex items-center gap-1.5 font-semibold text-red-900">
+                          <AlertTriangle size={13} className="shrink-0 text-red-600" />
+                          <span>Upload Issue</span>
+                        </div>
+                        <p className="leading-relaxed text-red-700">
+                          {formatErrorMessage(post.last_error)}
+                        </p>
                       </div>
                     )}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0">
+                    {post.status === 'failed' && (
+                      <button
+                        onClick={() => handleRetryPost(post.id)}
+                        disabled={retryingId === post.id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-white hover:bg-stone-800 transition-colors shadow-xs disabled:opacity-50"
+                        title="Retry upload now"
+                      >
+                        {retryingId === post.id ? (
+                          <>
+                            <Loader2 size={13} className="animate-spin" />
+                            Retrying...
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw size={13} />
+                            Retry
+                          </>
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => handleOpenEdit(post)}
                       className="p-1.5 rounded-lg text-text-muted hover:text-text hover:bg-stone-100 transition-colors"

@@ -106,10 +106,22 @@ export const schedule = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  update: (postId: string, data: Partial<{ scheduled_at: string; title: string; description: string; tags: string }>) =>
+  update: (postId: string, data: Partial<{ scheduled_at: string; title: string; description: string; tags: string; status?: string }>) =>
     request<import('./types').ScheduledPost>(`/api/schedule/${postId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+  retry: (postId: string) =>
+    request<import('./types').ScheduledPost>(`/api/schedule/${postId}/retry`, {
+      method: 'POST',
+    }),
+  retryAll: () =>
+    request<{ success: boolean }>('/api/schedule/retry-all', {
+      method: 'POST',
+    }),
+  clearFailed: () =>
+    request<{ success: boolean; deleted: number }>('/api/schedule/failed', {
+      method: 'DELETE',
     }),
   delete: (postId: string) => request<{ success: boolean }>(`/api/schedule/${postId}`, { method: 'DELETE' }),
 }

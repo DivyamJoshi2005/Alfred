@@ -97,6 +97,21 @@ async def execute_single_upload(db, post: dict[str, Any]):
         from uploaders import get_uploader
 
         uploader = get_uploader(platform)
+
+        # 1. Verify account is actually logged in before attempting upload
+        is_logged_in = await uploader.check_login()
+        if not is_logged_in:
+            err = f"Account not logged in: Please connect and log into your {platform.title()} account in Settings > Social Accounts first."
+            await db.execute(
+                "UPDATE scheduled_posts SET status = 'failed', attempts = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (MAX_UPLOAD_RETRIES, err, post_id),
+            )
+            await db.commit()
+            await manager.send_upload_status(post_id, "failed", error=err)
+            await manager.send_notification("error", f"❌ {err}")
+            print(f"[Scheduler] Post {post_id} skipped: {err}")
+            return
+
         result = await uploader.upload(
             clip_path=clip_path,
             title=post.get("title") or "Alfred Clip",
@@ -129,6 +144,9 @@ async def execute_single_upload(db, post: dict[str, Any]):
 
     except Exception as e:
         error_msg = f"{type(e).__name__}: {str(e)}"
+        if "╔═══" in error_msg:
+            lines = [l.strip() for l in error_msg.splitlines() if l.strip() and not l.startswith("║") and not l.startswith("╔") and not l.startswith("╚")]
+            error_msg = lines[0] if lines else "Browser automation error"
         print(f"[Scheduler] Post {post_id} failed on attempt {attempts + 1}: {error_msg}")
         new_attempts = attempts + 1
 

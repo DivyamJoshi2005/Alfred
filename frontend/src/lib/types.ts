@@ -71,6 +71,7 @@ export interface SocialAccount {
   display_name: string | null
   connected_at: string
   last_used_at: string | null
+  is_authenticated?: boolean
 }
 
 export interface LocalVideo {

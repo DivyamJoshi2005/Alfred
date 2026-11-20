@@ -32,7 +32,8 @@ temp/
 tmp/
 
 # AI Model Binaries & Weight Checkpoints (Downloaded dynamically on setup)
-models/
+/models/
+!backend/models/
 *.onnx
 *.bin
 *.pt

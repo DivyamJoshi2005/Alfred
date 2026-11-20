@@ -44,6 +44,7 @@ export function SettingsPage() {
   const [accountsList, setAccountsList] = useState<SocialAccount[]>([])
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null)
   const [disconnectingPlatform, setDisconnectingPlatform] = useState<string | null>(null)
+  const [accountStatuses, setAccountStatuses] = useState<Record<string, { checking?: boolean; authenticated?: boolean; error?: string }>>({})
 
   // Voice & Audio
   const [voicePreset, setVoicePreset] = useState('af_heart')
@@ -202,6 +203,11 @@ export function SettingsPage() {
         if (firstWithEmbedding) setSelectedVoiceSample(firstWithEmbedding.name)
       }
       if (s.output_directory) setOutputDir(s.output_directory)
+
+      // Check live status for connected accounts
+      accs.forEach(a => {
+        checkAccountStatus(a.platform)
+      })
     } catch (err) {
       console.error('Failed to load settings', err)
     }
@@ -211,13 +217,40 @@ export function SettingsPage() {
     loadData()
   }, [loadData])
 
+  const checkAccountStatus = async (platform: string) => {
+    setAccountStatuses(prev => ({
+      ...prev,
+      [platform]: { ...prev[platform], checking: true },
+    }))
+    try {
+      const res = await accountsApi.status(platform)
+      setAccountStatuses(prev => ({
+        ...prev,
+        [platform]: { checking: false, authenticated: res.authenticated, error: res.error },
+      }))
+    } catch (err: unknown) {
+      setAccountStatuses(prev => ({
+        ...prev,
+        [platform]: {
+          checking: false,
+          authenticated: false,
+          error: err instanceof Error ? err.message : 'Status check failed',
+        },
+      }))
+    }
+  }
+
   const handleConnectAccount = async (platform: string) => {
     setConnectingPlatform(platform)
     try {
-      alert(`A Chromium browser window will open shortly. Log in to your ${platform.toUpperCase()} account, navigate past the login screen, and Alfred will securely save your local session cookie profile.`)
+      alert(`A Chromium browser window will open shortly for ${platform.toUpperCase()}.\n\n1. Sign in with your account credentials.\n2. Ensure you reach the dashboard or home feed.\n3. Alfred will verify and safely store your session cookies for automated uploads.`)
       const updated = await accountsApi.connect(platform)
       setAccountsList(prev => [updated, ...prev.filter(a => a.platform !== platform)])
-      alert(`Connected to ${platform.toUpperCase()} successfully!`)
+      setAccountStatuses(prev => ({
+        ...prev,
+        [platform]: { checking: false, authenticated: true },
+      }))
+      alert(`✅ Connected to ${platform.toUpperCase()} and verified session successfully!`)
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : `Connection to ${platform} failed or timed out`)
     } finally {
@@ -226,11 +259,16 @@ export function SettingsPage() {
   }
 
   const handleDisconnectAccount = async (platform: string) => {
-    if (!window.confirm(`Disconnect ${platform.toUpperCase()} account?`)) return
+    if (!window.confirm(`Disconnect ${platform.toUpperCase()} account and remove saved session cookies?`)) return
     setDisconnectingPlatform(platform)
     try {
       await accountsApi.disconnect(platform, true)
       setAccountsList(prev => prev.filter(a => a.platform !== platform))
+      setAccountStatuses(prev => {
+        const next = { ...prev }
+        delete next[platform]
+        return next
+      })
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to disconnect account')
     } finally {
@@ -376,18 +414,37 @@ export function SettingsPage() {
               const connectedAcc = getAccount(platform)
               const isConnecting = connectingPlatform === platform
               const isDisconnecting = disconnectingPlatform === platform
+              const statusInfo = accountStatuses[platform]
+              const isChecking = statusInfo?.checking === true
+              const isAuthenticated = statusInfo?.authenticated === true
+              const isExpired = connectedAcc && statusInfo?.authenticated === false
 
               return (
                 <div
                   key={platform}
                   className="bg-surface rounded-xl border border-border p-5 shadow-xs flex flex-col justify-between space-y-4"
                 >
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
                       <h4 className={cn("text-base font-semibold", color)}>
                         {title}
                       </h4>
-                      {connectedAcc ? (
+                      {isChecking ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-text-muted bg-stone-100 px-2 py-0.5 rounded-full">
+                          <Loader2 size={11} className="animate-spin" />
+                          Checking...
+                        </span>
+                      ) : isAuthenticated ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                          <CheckCircle2 size={12} />
+                          Logged In
+                        </span>
+                      ) : isExpired ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                          <AlertCircle size={12} />
+                          Not Logged In
+                        </span>
+                      ) : connectedAcc ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                           <CheckCircle2 size={12} />
                           Active
@@ -401,22 +458,67 @@ export function SettingsPage() {
                     <p className="text-xs text-text-secondary leading-relaxed">
                       {desc}
                     </p>
-                    {connectedAcc && (
-                      <p className="text-xs text-text-muted pt-1">
-                        Connected: <span className="font-medium text-text">{connectedAcc.display_name || 'Browser Session'}</span>
-                      </p>
+                    {isAuthenticated && (
+                      <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200/60 text-xs text-emerald-800">
+                        <p className="font-medium">Active browser session verified.</p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5">Automated stealth uploads are enabled.</p>
+                      </div>
+                    )}
+                    {isExpired && (
+                      <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                        <p className="font-semibold">Action Required: No active login detected.</p>
+                        <p className="text-[11px] text-amber-700 mt-0.5">Click "Log In via Browser" to sign into your account.</p>
+                      </div>
                     )}
                   </div>
 
-                  <div className="pt-2 border-t border-border">
-                    {connectedAcc ? (
-                      <button
-                        onClick={() => handleDisconnectAccount(platform)}
-                        disabled={isDisconnecting}
-                        className="w-full py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200 disabled:opacity-50"
-                      >
-                        {isDisconnecting ? 'Disconnecting...' : 'Disconnect Account'}
-                      </button>
+                  <div className="pt-3 border-t border-border">
+                    {isAuthenticated ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => checkAccountStatus(platform)}
+                          disabled={isChecking}
+                          className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-100 rounded-lg transition-colors border border-border"
+                          title="Verify session cookies"
+                        >
+                          <RefreshCw size={12} className={cn(isChecking && "animate-spin")} />
+                          Check Status
+                        </button>
+                        <button
+                          onClick={() => handleDisconnectAccount(platform)}
+                          disabled={isDisconnecting}
+                          className="py-1.5 px-3 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200 disabled:opacity-50"
+                        >
+                          {isDisconnecting ? '...' : 'Disconnect'}
+                        </button>
+                      </div>
+                    ) : isExpired ? (
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => handleConnectAccount(platform)}
+                          disabled={isConnecting}
+                          className="w-full inline-flex items-center justify-center gap-1.5 py-2 text-xs font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50 shadow-xs"
+                        >
+                          {isConnecting ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              Browser Open...
+                            </>
+                          ) : (
+                            <>
+                              <ExternalLink size={13} />
+                              Log In via Browser
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleDisconnectAccount(platform)}
+                          disabled={isDisconnecting}
+                          className="w-full py-1 text-xs text-red-600 hover:text-red-700 transition-colors"
+                        >
+                          Remove Stale Session
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={() => handleConnectAccount(platform)}

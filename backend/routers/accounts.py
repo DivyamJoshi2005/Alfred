@@ -78,30 +78,61 @@ async def connect_account(platform: str, interactive: bool = True):
 
         try:
             async with get_stealth_context(platform, headless=False) as (context, page):
-                await page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
+                try:
+                    await page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
+                except Exception as nav_err:
+                    print(f"[Accounts] Initial navigation warning: {nav_err}")
 
-                # Wait for user to complete login (poll for max 3 minutes or window close)
-                for _ in range(60):
+                # Wait for user to complete login (poll for max 5 minutes or window close)
+                for _ in range(100):
                     await asyncio.sleep(3)
-                    if page.is_closed():
+                    active_pages = [p for p in context.pages if not p.is_closed()]
+                    if not active_pages:
                         break
 
-                    current_url = page.url
-                    # Detect login success
-                    if platform == "youtube" and "studio.youtube.com" in current_url and "signin" not in current_url:
-                        print("[Accounts] YouTube login detected successfully!")
-                        await random_delay(2.0, 3.0)
-                        break
-                    elif platform == "instagram" and "login" not in current_url and "instagram.com" in current_url:
-                        print("[Accounts] Instagram login detected!")
-                        await random_delay(2.0, 3.0)
-                        break
-                    elif platform == "twitter" and ("home" in current_url or ("x.com" in current_url and "login" not in current_url)):
-                        print("[Accounts] Twitter login detected!")
-                        await random_delay(2.0, 3.0)
+                    login_detected = False
+                    for p in active_pages:
+                        current_url = p.url
+                        if platform == "youtube" and "studio.youtube.com" in current_url and "signin" not in current_url:
+                            print("[Accounts] YouTube login detected successfully!")
+                            login_detected = True
+                            break
+                        elif platform == "instagram" and "accounts/login" not in current_url and "instagram.com" in current_url and len(current_url) > 28:
+                            print("[Accounts] Instagram login detected!")
+                            login_detected = True
+                            break
+                        elif platform == "twitter" and ("home" in current_url or ("x.com" in current_url and "login" not in current_url and "flow" not in current_url)):
+                            print("[Accounts] Twitter login detected!")
+                            login_detected = True
+                            break
+
+                    if login_detected:
+                        # Give session extra time to persist cookies
+                        await asyncio.sleep(3.0)
                         break
         except Exception as e:
             print(f"[Accounts] Interactive browser closed or timed out: {e}")
+
+    # Verify actual login status with uploader
+    uploader = get_uploader(platform)
+    is_authenticated = await uploader.check_login()
+
+    if not is_authenticated:
+        # Clean up any stale unauthenticated DB row for platform
+        db = await get_db()
+        try:
+            await db.execute("DELETE FROM social_accounts WHERE platform = ?", (platform,))
+            await db.commit()
+        finally:
+            await db.close()
+
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                f"Authentication was not completed for {platform.title()}. "
+                f"Please log in completely in the browser window and reach your account dashboard before closing it."
+            ),
+        )
 
     db = await get_db()
     try:
@@ -123,6 +154,7 @@ async def connect_account(platform: str, interactive: bool = True):
             display_name=row["display_name"],
             connected_at=row["connected_at"],
             last_used_at=row["last_used_at"],
+            is_authenticated=True,
         )
     finally:
         await db.close()

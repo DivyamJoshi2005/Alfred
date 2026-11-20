@@ -6,6 +6,7 @@ hardening to minimize bot-detection risk during social media uploads.
 
 import asyncio
 import random
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -28,6 +29,9 @@ STEALTH_ARGS = [
     "--no-default-browser-check",
     "--no-first-run",
     "--password-store=basic",
+    "--ozone-platform-hint=auto",
+    "--ignore-certificate-errors",
+    "--no-sandbox",
 ]
 
 # Client-side JavaScript to mask automation footprints
@@ -95,6 +99,19 @@ async def human_click(page: Page, selector: str):
     await random_delay(0.4, 0.9)
 
 
+async def ensure_playwright_browsers():
+    """Ensure Playwright chromium browser is installed."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "playwright", "install", "chromium",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+    except Exception as e:
+        print(f"[Stealth] Auto-install playwright browsers error: {e}")
+
+
 @asynccontextmanager
 async def get_stealth_context(
     platform: str,
@@ -125,15 +142,25 @@ async def get_stealth_context(
         }
 
         try:
-            context = await p.chromium.launch_persistent_context(
-                channel="chrome",
-                **launch_kwargs,
-            )
-        except Exception:
-            # Fall back to standard chromium or playwright default
-            context = await p.chromium.launch_persistent_context(
-                **launch_kwargs,
-            )
+            try:
+                context = await p.chromium.launch_persistent_context(
+                    channel="chrome",
+                    **launch_kwargs,
+                )
+            except Exception:
+                # Fall back to standard chromium or playwright default
+                context = await p.chromium.launch_persistent_context(
+                    **launch_kwargs,
+                )
+        except Exception as e:
+            if "Executable doesn't exist" in str(e) or "download new browsers" in str(e):
+                print("[Stealth] Playwright browser missing, auto-installing chromium...")
+                await ensure_playwright_browsers()
+                context = await p.chromium.launch_persistent_context(
+                    **launch_kwargs,
+                )
+            else:
+                raise
 
         # Inject stealth evasions into all pages
         await context.add_init_script(STEALTH_INIT_SCRIPT)

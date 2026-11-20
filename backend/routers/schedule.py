@@ -1,7 +1,7 @@
 """Alfred Backend — Schedule API router."""
 
 import uuid
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from models import ScheduleCreate, ScheduleUpdate, ScheduleResponse
 from database import get_db
 
@@ -66,11 +66,12 @@ async def list_scheduled_posts(from_date: str | None = None, to_date: str | None
 
 @router.patch("/{post_id}", response_model=ScheduleResponse)
 async def update_scheduled_post(post_id: str, body: ScheduleUpdate):
-    """Update a scheduled post's time or metadata."""
+    """Update a scheduled post's time or metadata, resetting failure state if rescheduled."""
     db = await get_db()
     try:
         cursor = await db.execute("SELECT * FROM scheduled_posts WHERE id = ?", (post_id,))
-        if not await cursor.fetchone():
+        existing = await cursor.fetchone()
+        if not existing:
             raise HTTPException(status_code=404, detail="Scheduled post not found")
 
         updates = []
@@ -80,6 +81,18 @@ async def update_scheduled_post(post_id: str, body: ScheduleUpdate):
             if value is not None:
                 updates.append(f"{field} = ?")
                 params.append(value)
+
+        # If rescheduled or explicitly set to scheduled, reset failure counters
+        target_status = body.status
+        if not target_status and body.scheduled_at and existing["status"] == "failed":
+            target_status = "scheduled"
+
+        if target_status:
+            updates.append("status = ?")
+            params.append(target_status)
+            if target_status == "scheduled":
+                updates.append("attempts = 0")
+                updates.append("last_error = NULL")
 
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
@@ -94,6 +107,69 @@ async def update_scheduled_post(post_id: str, body: ScheduleUpdate):
 
         cursor = await db.execute("SELECT * FROM scheduled_posts WHERE id = ?", (post_id,))
         return _row_to_response(await cursor.fetchone())
+    finally:
+        await db.close()
+
+
+@router.post("/{post_id}/retry", response_model=ScheduleResponse)
+async def retry_scheduled_post(post_id: str, background_tasks: BackgroundTasks):
+    """Reset a failed post to scheduled and trigger immediate upload."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM scheduled_posts WHERE id = ?", (post_id,))
+        existing = await cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Scheduled post not found")
+
+        await db.execute(
+            """UPDATE scheduled_posts
+               SET status = 'scheduled', attempts = 0, last_error = NULL,
+                   scheduled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (post_id,),
+        )
+        await db.commit()
+
+        cursor = await db.execute("SELECT * FROM scheduled_posts WHERE id = ?", (post_id,))
+        row = await cursor.fetchone()
+
+        from scheduler.worker import process_due_posts
+        background_tasks.add_task(process_due_posts)
+
+        return _row_to_response(row)
+    finally:
+        await db.close()
+
+
+@router.post("/retry-all")
+async def retry_all_failed_posts(background_tasks: BackgroundTasks):
+    """Reset all failed posts back to scheduled and trigger upload."""
+    db = await get_db()
+    try:
+        await db.execute(
+            """UPDATE scheduled_posts
+               SET status = 'scheduled', attempts = 0, last_error = NULL,
+                   scheduled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+               WHERE status = 'failed'"""
+        )
+        await db.commit()
+
+        from scheduler.worker import process_due_posts
+        background_tasks.add_task(process_due_posts)
+
+        return {"success": True}
+    finally:
+        await db.close()
+
+
+@router.delete("/failed")
+async def delete_all_failed_posts():
+    """Bulk delete all failed scheduled posts."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("DELETE FROM scheduled_posts WHERE status = 'failed'")
+        await db.commit()
+        return {"success": True, "deleted": cursor.rowcount}
     finally:
         await db.close()
 
