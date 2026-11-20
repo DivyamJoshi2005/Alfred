@@ -14,10 +14,9 @@ import {
   Repeat,
   MonitorPlay,
   Smartphone,
-  ChevronLeft,
-  ChevronRight,
   ZoomIn,
   Globe,
+  Flag,
 } from 'lucide-react'
 import type { Clip } from '../lib/types'
 import { formatTime, cn } from '../lib/utils'
@@ -56,6 +55,17 @@ const VOICE_PRESET_NAMES: Record<string, string> = {
   am_adam: 'Adam (Confident & Direct)',
   am_michael: 'Michael (Deep & Grounded)',
 }
+
+// Realistic video editing nudge steps:
+// 1 frame at 30fps is ~0.033s; plus standard 1 second and 5 second jumps.
+const REALISTIC_NUDGE_STEPS = [
+  { label: '-5s', delta: -5.0, title: 'Step back 5 seconds' },
+  { label: '-1s', delta: -1.0, title: 'Step back 1 second' },
+  { label: '-1f', delta: -0.033, title: 'Step back 1 frame (1/30s)' },
+  { label: '+1f', delta: 0.033, title: 'Step forward 1 frame (1/30s)' },
+  { label: '+1s', delta: 1.0, title: 'Step forward 1 second' },
+  { label: '+5s', delta: 5.0, title: 'Step forward 5 seconds' },
+]
 
 export function ClipTimelineEditor({
   clip,
@@ -151,22 +161,22 @@ export function ClipTimelineEditor({
     return `/api/media?path=${encodeURIComponent(videoPath)}`
   }, [previewMode, renderedPath, renderTimestamp, clip.created_at, videoPath])
 
-  // Seek video directly
+  // Seek video directly: Allows moving ANYWHERE across the entire video freely!
   const seekVideo = useCallback(
     (targetTime: number) => {
-      const clamped = Math.max(startTime, Math.min(endTime, targetTime))
+      const clamped = Math.max(0, Math.min(totalVideoDuration, targetTime))
       setCurrentTime(clamped)
       if (videoRef.current) {
         if (previewMode === 'rendered') {
-          // Rendered video is relative to clip start (starts at 0.0s)
-          videoRef.current.currentTime = Math.max(0, clamped - startTime)
+          // Rendered video is relative to clip start
+          videoRef.current.currentTime = Math.max(0, Math.min(currentDuration, clamped - startTime))
         } else {
           // Master source video uses absolute timestamp
           videoRef.current.currentTime = clamped
         }
       }
     },
-    [startTime, endTime, previewMode]
+    [startTime, currentDuration, previewMode, totalVideoDuration]
   )
 
   // Re-position video when source or in-point changes
@@ -194,7 +204,8 @@ export function ClipTimelineEditor({
       setIsDucked(false)
       videoRef.current.volume = isMuted ? 0 : 1.0
     } else {
-      if (currentTime >= endTime - 0.2 || currentTime < startTime) {
+      // If at or past end, restart from startTime
+      if (currentTime >= endTime - 0.2) {
         seekVideo(startTime)
       }
       videoRef.current
@@ -211,7 +222,7 @@ export function ClipTimelineEditor({
     const absTime = previewMode === 'rendered' ? startTime + vTime : vTime
     setCurrentTime(absTime)
 
-    // Clip boundary limit
+    // Clip boundary limit when playing inside clip
     if (absTime >= endTime) {
       if (isLooping) {
         seekVideo(startTime)
@@ -268,13 +279,29 @@ export function ClipTimelineEditor({
     }
   }
 
-  // Micro step
+  // Step by delta seconds
   const handleStep = (seconds: number) => {
     if (videoRef.current && isPlaying) {
       videoRef.current.pause()
       setIsPlaying(false)
     }
     seekVideo(currentTime + seconds)
+  }
+
+  // Mark current frame as Start (In-point)
+  const handleMarkStart = () => {
+    const newStart = Math.max(0, Math.min(endTime - 2.0, currentTime))
+    const rounded = parseFloat(newStart.toFixed(2))
+    onStartTimeChange(rounded)
+    seekVideo(rounded)
+  }
+
+  // Mark current frame as End (Out-point)
+  const handleMarkEnd = () => {
+    const newEnd = Math.max(startTime + 2.0, Math.min(totalVideoDuration, currentTime))
+    const rounded = parseFloat(newEnd.toFixed(2))
+    onEndTimeChange(rounded)
+    seekVideo(rounded)
   }
 
   // Helper to calculate time from pointer event on sequencer
@@ -288,7 +315,7 @@ export function ClipTimelineEditor({
   // Drag on Sequencer
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const time = getTimeFromPointer(e)
-    const tolerance = viewSpan * 0.025 // 2.5% grab tolerance
+    const tolerance = viewSpan * 0.03 // 3% grab tolerance
 
     // Check if clicked near Start Pointer
     if (Math.abs(time - startTime) <= tolerance) {
@@ -315,7 +342,7 @@ export function ClipTimelineEditor({
       }
     }
 
-    // Otherwise, scrub playhead
+    // Otherwise, scrub playhead freely
     setDragTarget('playhead')
     e.currentTarget.setPointerCapture(e.pointerId)
     seekVideo(time)
@@ -326,19 +353,16 @@ export function ClipTimelineEditor({
     const time = getTimeFromPointer(e)
 
     if (dragTarget === 'start') {
-      // Clamp start time between 0 and endTime - 2.0s
       const newStart = Math.max(0, Math.min(endTime - 2.0, time))
-      const rounded = parseFloat(newStart.toFixed(1))
+      const rounded = parseFloat(newStart.toFixed(2))
       onStartTimeChange(rounded)
       seekVideo(rounded)
     } else if (dragTarget === 'end') {
-      // Clamp end time between startTime + 2.0s and totalVideoDuration
       const newEnd = Math.max(startTime + 2.0, Math.min(totalVideoDuration, time))
-      const rounded = parseFloat(newEnd.toFixed(1))
+      const rounded = parseFloat(newEnd.toFixed(2))
       onEndTimeChange(rounded)
       seekVideo(rounded)
     } else if (dragTarget === 'hook') {
-      // Drag hook block within [startTime, endTime - hookDuration]
       const halfBlock = hookDuration / 2
       const targetOffset = Math.max(0, Math.min(maxHookOffset, time - startTime - halfBlock))
       const rounded = parseFloat(targetOffset.toFixed(1))
@@ -395,10 +419,10 @@ export function ClipTimelineEditor({
           </div>
           <div>
             <span className="font-semibold text-white tracking-wide">
-              Video Preview & Timeline
+              Live Video Preview & Active Sequencer
             </span>
             <span className="text-stone-400 ml-2">
-              • Slide the Start & End markers directly on the sequencer below
+              • Scrub freely across the video or slide Start & End handles below
             </span>
           </div>
         </div>
@@ -450,7 +474,7 @@ export function ClipTimelineEditor({
       </div>
 
       {/* Video Viewport Monitor */}
-      <div className="relative rounded-xl overflow-hidden bg-black border border-stone-800 shadow-inner group flex items-center justify-center aspect-video max-h-[300px] mx-auto w-full max-w-3xl">
+      <div className="relative rounded-xl overflow-hidden bg-black border border-stone-800 shadow-inner group flex items-center justify-center aspect-video max-h-[310px] mx-auto w-full max-w-3xl">
         <video
           ref={videoRef}
           src={activeVideoSrc}
@@ -502,72 +526,143 @@ export function ClipTimelineEditor({
         </div>
       </div>
 
-      {/* Transport Controls Bar */}
-      <div className="flex items-center justify-between p-2 rounded-xl bg-stone-800/80 border border-stone-700/70 text-xs max-w-3xl mx-auto w-full">
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={handleTogglePlay}
-            className="p-1.5 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors shadow-xs cursor-pointer"
-            title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
-          >
-            {isPlaying ? <Pause size={14} /> : <Play size={14} className="fill-white" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => seekVideo(startTime)}
-            className="p-1.5 rounded-lg bg-stone-700 text-stone-200 hover:bg-stone-600 transition-colors cursor-pointer"
-            title="Replay from clip start"
-          >
-            <RotateCcw size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleStep(-0.2)}
-            className="p-1.5 rounded-lg bg-stone-700/60 text-stone-300 hover:bg-stone-600 transition-colors cursor-pointer"
-            title="Step back 0.2s"
-          >
-            <ChevronLeft size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleStep(0.2)}
-            className="p-1.5 rounded-lg bg-stone-700/60 text-stone-300 hover:bg-stone-600 transition-colors cursor-pointer"
-            title="Step forward 0.2s"
-          >
-            <ChevronRight size={13} />
-          </button>
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* LIVE VIDEO SCRUBBER BAR: Move ANYWHERE across the video!     */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <div className="w-full max-w-3xl mx-auto space-y-1">
+        <div className="flex items-center gap-2.5 p-2 rounded-xl bg-stone-800/90 border border-stone-700/80">
+          <span className="font-mono text-[11px] text-emerald-400 font-bold min-w-[50px]">
+            {formatTime(currentTime)}
+          </span>
+
+          {/* Continuous interactive scrub bar spanning entire video */}
+          <div className="relative flex-1 flex items-center py-1">
+            <input
+              type="range"
+              min={0}
+              max={totalVideoDuration}
+              step="0.033"
+              value={currentTime}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value)
+                seekVideo(val)
+              }}
+              className="w-full accent-accent h-2 bg-stone-900 rounded-lg cursor-pointer"
+              title="Drag or click anywhere to jump instantly to any point in the video"
+            />
+          </div>
+
+          <span className="font-mono text-[11px] text-stone-400 min-w-[50px] text-right">
+            {formatTime(totalVideoDuration)}
+          </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsLooping(!isLooping)}
-            className={cn(
-              'px-2 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer',
-              isLooping
-                ? 'bg-accent/20 text-accent border border-accent/30 font-semibold'
-                : 'text-stone-400 hover:text-stone-200'
-            )}
-            title="Loop preview within clip boundaries"
-          >
-            <Repeat size={12} />
-            Loop
-          </button>
+        {/* Transport Buttons Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-xl bg-stone-800/70 border border-stone-700/60 text-xs">
+          {/* Play & Jumps */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleTogglePlay}
+              className="p-1.5 rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors shadow-xs cursor-pointer"
+              title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+            >
+              {isPlaying ? <Pause size={14} /> : <Play size={14} className="fill-white" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => seekVideo(startTime)}
+              className="p-1.5 rounded-lg bg-stone-700 text-stone-200 hover:bg-stone-600 transition-colors cursor-pointer"
+              title="Replay from clip start"
+            >
+              <RotateCcw size={13} />
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (videoRef.current) {
-                videoRef.current.muted = !isMuted
-                setIsMuted(!isMuted)
-              }
-            }}
-            className="p-1.5 rounded-md text-stone-400 hover:text-stone-200 transition-colors cursor-pointer"
-            title={isMuted ? 'Unmute' : 'Mute'}
-          >
-            {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-          </button>
+            {/* Step 1 frame buttons (0.033s at 30fps) */}
+            <button
+              type="button"
+              onClick={() => handleStep(-1.0)}
+              className="px-2 py-1 rounded bg-stone-700/80 hover:bg-stone-600 text-stone-200 text-[11px] font-mono cursor-pointer"
+              title="Jump back 1 second"
+            >
+              -1s
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStep(-0.033)}
+              className="px-1.5 py-1 rounded bg-stone-700/80 hover:bg-stone-600 text-stone-200 text-[11px] font-mono cursor-pointer"
+              title="Step back 1 frame (1/30 sec)"
+            >
+              -1f
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStep(0.033)}
+              className="px-1.5 py-1 rounded bg-stone-700/80 hover:bg-stone-600 text-stone-200 text-[11px] font-mono cursor-pointer"
+              title="Step forward 1 frame (1/30 sec)"
+            >
+              +1f
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStep(1.0)}
+              className="px-2 py-1 rounded bg-stone-700/80 hover:bg-stone-600 text-stone-200 text-[11px] font-mono cursor-pointer"
+              title="Jump forward 1 second"
+            >
+              +1s
+            </button>
+          </div>
+
+          {/* Quick Mark In / Mark Out Buttons */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleMarkStart}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-stone-700 hover:bg-emerald-700 hover:text-white text-stone-200 text-[11px] font-semibold transition-colors cursor-pointer"
+              title="Set current playhead frame as clip Start point"
+            >
+              <Flag size={11} className="text-emerald-400" />
+              Set Start Here
+            </button>
+            <button
+              type="button"
+              onClick={handleMarkEnd}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-stone-700 hover:bg-emerald-700 hover:text-white text-stone-200 text-[11px] font-semibold transition-colors cursor-pointer"
+              title="Set current playhead frame as clip End point"
+            >
+              <Flag size={11} className="text-emerald-400" />
+              Set End Here
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsLooping(!isLooping)}
+              className={cn(
+                'px-2 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer',
+                isLooping
+                  ? 'bg-accent/20 text-accent border border-accent/30 font-semibold'
+                  : 'text-stone-400 hover:text-stone-200'
+              )}
+              title="Loop preview within clip boundaries"
+            >
+              <Repeat size={12} />
+              Loop
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (videoRef.current) {
+                  videoRef.current.muted = !isMuted
+                  setIsMuted(!isMuted)
+                }
+              }}
+              className="p-1.5 rounded-md text-stone-400 hover:text-stone-200 transition-colors cursor-pointer"
+              title={isMuted ? 'Unmute' : 'Mute'}
+            >
+              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -578,10 +673,10 @@ export function ClipTimelineEditor({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-white uppercase tracking-wider text-[11px]">
-              Timeline Sequencer
+              Active Sequencer
             </span>
             <span className="text-[11px] text-stone-400">
-              • Drag the <span className="text-emerald-400 font-bold">Start</span> and <span className="text-emerald-400 font-bold">End</span> pointers to set clip length
+              • Drag the <span className="text-emerald-400 font-bold">START</span> and <span className="text-emerald-400 font-bold">END</span> handles or scrub anywhere
             </span>
           </div>
 
@@ -591,7 +686,7 @@ export function ClipTimelineEditor({
               type="button"
               onClick={() => setZoomMode('focus')}
               className={cn(
-                'px-2 py-0.5 rounded font-medium flex items-center gap-1 transition-colors cursor-pointer',
+                'px-2.5 py-0.5 rounded font-medium flex items-center gap-1 transition-colors cursor-pointer',
                 zoomMode === 'focus'
                   ? 'bg-stone-800 text-white font-bold border border-stone-700'
                   : 'text-stone-400 hover:text-white'
@@ -604,7 +699,7 @@ export function ClipTimelineEditor({
               type="button"
               onClick={() => setZoomMode('all')}
               className={cn(
-                'px-2 py-0.5 rounded font-medium flex items-center gap-1 transition-colors cursor-pointer',
+                'px-2.5 py-0.5 rounded font-medium flex items-center gap-1 transition-colors cursor-pointer',
                 zoomMode === 'all'
                   ? 'bg-stone-800 text-white font-bold border border-stone-700'
                   : 'text-stone-400 hover:text-white'
@@ -747,28 +842,29 @@ export function ClipTimelineEditor({
           </div>
         </div>
 
-        {/* Micro-Nudge Toolbar directly below the Sequencer */}
+        {/* Micro-Nudge Toolbar directly below the Sequencer with realistic increments */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
-          {/* Start Nudge */}
+          {/* Start Realistic Nudge */}
           <div className="flex items-center gap-1.5 bg-stone-900 px-2.5 py-1.5 rounded-lg border border-stone-800">
             <span className="text-stone-400 font-semibold text-[11px]">Start:</span>
             <span className="font-mono text-emerald-400 font-bold text-[11px] mr-1">
               {formatTime(startTime)}
             </span>
             <div className="flex gap-1">
-              {[-1.0, -0.1, 0.1, 1.0].map((delta) => (
+              {REALISTIC_NUDGE_STEPS.map((step) => (
                 <button
-                  key={delta}
+                  key={step.label}
                   type="button"
                   onClick={() => {
-                    const next = Math.max(0, Math.min(endTime - 2.0, startTime + delta))
-                    const rounded = parseFloat(next.toFixed(1))
+                    const next = Math.max(0, Math.min(endTime - 2.0, startTime + step.delta))
+                    const rounded = parseFloat(next.toFixed(2))
                     onStartTimeChange(rounded)
                     seekVideo(rounded)
                   }}
                   className="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 font-mono text-[10px] border border-stone-700 cursor-pointer"
+                  title={step.title}
                 >
-                  {delta > 0 ? `+${delta}s` : `${delta}s`}
+                  {step.label}
                 </button>
               ))}
             </div>
@@ -786,26 +882,27 @@ export function ClipTimelineEditor({
             {currentDuration.toFixed(1)}s Clip {currentDuration >= 15 && currentDuration <= 60 ? '• Optimal Short' : ''}
           </span>
 
-          {/* End Nudge */}
+          {/* End Realistic Nudge */}
           <div className="flex items-center gap-1.5 bg-stone-900 px-2.5 py-1.5 rounded-lg border border-stone-800">
             <span className="text-stone-400 font-semibold text-[11px]">End:</span>
             <span className="font-mono text-emerald-400 font-bold text-[11px] mr-1">
               {formatTime(endTime)}
             </span>
             <div className="flex gap-1">
-              {[-1.0, -0.1, 0.1, 1.0].map((delta) => (
+              {REALISTIC_NUDGE_STEPS.map((step) => (
                 <button
-                  key={delta}
+                  key={step.label}
                   type="button"
                   onClick={() => {
-                    const next = Math.max(startTime + 2.0, Math.min(totalVideoDuration, endTime + delta))
-                    const rounded = parseFloat(next.toFixed(1))
+                    const next = Math.max(startTime + 2.0, Math.min(totalVideoDuration, endTime + step.delta))
+                    const rounded = parseFloat(next.toFixed(2))
                     onEndTimeChange(rounded)
                     seekVideo(rounded)
                   }}
                   className="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 font-mono text-[10px] border border-stone-700 cursor-pointer"
+                  title={step.title}
                 >
-                  {delta > 0 ? `+${delta}s` : `${delta}s`}
+                  {step.label}
                 </button>
               ))}
             </div>
