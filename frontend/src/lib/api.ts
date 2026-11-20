@@ -106,6 +106,11 @@ export const schedule = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  publishNow: (data: { clip_id: string; platform: string; title?: string; description?: string; tags?: string }) =>
+    request<import('./types').ScheduledPost>('/api/schedule/publish-now', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   update: (postId: string, data: Partial<{ scheduled_at: string; title: string; description: string; tags: string; status?: string }>) =>
     request<import('./types').ScheduledPost>(`/api/schedule/${postId}`, {
       method: 'PATCH',

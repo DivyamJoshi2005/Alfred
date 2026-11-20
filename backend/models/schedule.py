@@ -14,6 +14,15 @@ class ScheduleCreate(BaseModel):
     tags: Optional[str] = None
 
 
+class PublishNowRequest(BaseModel):
+    """Request to immediately upload a clip right now."""
+    clip_id: str
+    platform: str = Field(..., pattern="^(youtube|instagram|twitter)$")
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[str] = None
+
+
 class ScheduleUpdate(BaseModel):
     """Request to update a scheduled post."""
     scheduled_at: Optional[str] = None

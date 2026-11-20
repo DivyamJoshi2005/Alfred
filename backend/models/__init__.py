@@ -3,12 +3,12 @@ from .job import (
     ClipResponse, ClipUpdate, ClipRerenderRequest, ClipSynthesizeRequest,
     TranscriptResponse,
 )
-from .schedule import ScheduleCreate, ScheduleUpdate, ScheduleResponse, SocialAccountResponse
+from .schedule import ScheduleCreate, ScheduleUpdate, ScheduleResponse, SocialAccountResponse, PublishNowRequest
 
 __all__ = [
     "JobCreate", "JobResponse", "JobDetailResponse",
     "ClipResponse", "ClipUpdate", "ClipRerenderRequest", "ClipSynthesizeRequest",
     "TranscriptResponse",
-    "ScheduleCreate", "ScheduleUpdate", "ScheduleResponse",
+    "ScheduleCreate", "PublishNowRequest", "ScheduleUpdate", "ScheduleResponse",
     "SocialAccountResponse",
 ]

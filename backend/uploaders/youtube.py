@@ -93,22 +93,48 @@ class YouTubeUploader(BaseUploader):
                 await file_input.wait_for(state="attached", timeout=30000)
                 await file_input.set_input_files(str(video_file))
 
-                # 3. Wait for details dialog to appear
+                # 3. Wait for details dialog or error dialog
                 print("[YouTubeUploader] Waiting for upload metadata dialog...")
-                await page.wait_for_selector(
-                    "ytcp-uploads-dialog, #textbox[aria-label*='Add a title']",
-                    timeout=60000,
-                )
-                await random_delay(2.0, 4.0)
+                title_locator = page.locator(
+                    "#textbox[aria-label*='Add a title'], #title-textarea #textbox, ytcp-social-suggestions-textbox #textbox, div[aria-label*='title' i][contenteditable='true']"
+                ).first
+
+                # Check for either the title field or an error dialog
+                title_ready = False
+                for _ in range(60):
+                    if await title_locator.count() > 0 and await title_locator.is_visible():
+                        title_ready = True
+                        break
+
+                    # Check for YouTube error scrim or dialog
+                    error_box = page.locator("ytcp-uploads-dialog[has-error] #error-message, ytcp-dialog[type='ERROR'] #dialog-error, .error-short-message, #error-message, ytcp-alert").first
+                    if await error_box.count() > 0 and await error_box.is_visible():
+                        err_text = await error_box.inner_text()
+                        if err_text and err_text.strip():
+                            return {"success": False, "error": f"YouTube Studio: {err_text.strip()}"}
+
+                    # Check if YouTube asks to create a channel first
+                    create_channel = page.locator("button:has-text('Create Channel'), ytcp-button:has-text('Create channel')").first
+                    if await create_channel.count() > 0 and await create_channel.is_visible():
+                        return {"success": False, "error": "YouTube account requires creating a channel first. Please visit studio.youtube.com and create a channel."}
+
+                    await asyncio.sleep(1)
+
+                if not title_ready:
+                    error_box = page.locator("ytcp-uploads-dialog[has-error], #dialog-error, #error-message, ytcp-alert").first
+                    if await error_box.count() > 0:
+                        err_text = await error_box.inner_text()
+                        return {"success": False, "error": f"YouTube Studio upload error: {err_text.strip()}"}
+                    return {"success": False, "error": "Timed out waiting for YouTube Studio upload metadata dialog. Check your YouTube channel status or daily upload limits."}
+
+                await random_delay(1.5, 3.0)
 
                 # 4. Fill Title
                 print(f"[YouTubeUploader] Setting title: {clean_title}")
-                title_box = page.locator("#textbox[aria-label*='Add a title'], #title-textarea #textbox").first
-                if await title_box.count() > 0:
-                    await title_box.click()
-                    await page.keyboard.press("Control+A")
-                    await page.keyboard.press("Backspace")
-                    await human_type(page, "#textbox[aria-label*='Add a title'], #title-textarea #textbox", clean_title)
+                await title_locator.click()
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Backspace")
+                await human_type(page, "#textbox[aria-label*='Add a title'], #title-textarea #textbox, ytcp-social-suggestions-textbox #textbox, div[aria-label*='title' i][contenteditable='true']", clean_title)
 
                 # 5. Fill Description
                 if description:

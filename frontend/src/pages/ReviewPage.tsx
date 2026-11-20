@@ -18,7 +18,8 @@ import {
   Activity,
   Volume2,
   Flame,
-  Zap
+  Zap,
+  Upload
 } from 'lucide-react'
 import { jobs as jobsApi, clips as clipsApi, schedule as scheduleApi, settings as settingsApi } from '../lib/api'
 import type { Job, Clip } from '../lib/types'
@@ -61,8 +62,9 @@ export function ReviewPage() {
   // Video preview modal
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
 
-  // Scheduling modal
+  // Scheduling / Publish modal
   const [schedulingClip, setSchedulingClip] = useState<Clip | null>(null)
+  const [publishMode, setPublishMode] = useState<'now' | 'schedule'>('now')
   const [schedulePlatform, setSchedulePlatform] = useState<'youtube' | 'instagram' | 'twitter'>('youtube')
   const [scheduleDateTime, setScheduleDateTime] = useState<string>('')
   const [scheduleTitle, setScheduleTitle] = useState('')
@@ -242,9 +244,10 @@ export function ReviewPage() {
     }
   }
 
-  // Open Schedule Modal
-  const openScheduleModal = (clip: Clip) => {
+  // Open Schedule / Publish Modal
+  const openScheduleModal = (clip: Clip, mode: 'now' | 'schedule' = 'now') => {
     setSchedulingClip(clip)
+    setPublishMode(mode)
     setScheduleTitle(clip.hook_text || `Highlight from video`)
     setScheduleDescription(clip.transcript_text.slice(0, 250) + '...')
     setScheduleTags('#shorts #reels #viral #content')
@@ -266,22 +269,33 @@ export function ReviewPage() {
         await handleUpdateStatus(schedulingClip.id, 'approved')
       }
 
-      await scheduleApi.create({
-        clip_id: schedulingClip.id,
-        platform: schedulePlatform,
-        scheduled_at: new Date(scheduleDateTime).toISOString(),
-        title: scheduleTitle,
-        description: scheduleDescription,
-        tags: scheduleTags,
-      })
+      if (publishMode === 'now') {
+        await scheduleApi.publishNow({
+          clip_id: schedulingClip.id,
+          platform: schedulePlatform,
+          title: scheduleTitle,
+          description: scheduleDescription,
+          tags: scheduleTags,
+        })
+        setScheduleSuccessMsg(`🚀 Uploading to ${schedulePlatform.toUpperCase()} right now! Monitor live status in Calendar.`)
+      } else {
+        await scheduleApi.create({
+          clip_id: schedulingClip.id,
+          platform: schedulePlatform,
+          scheduled_at: new Date(scheduleDateTime).toISOString(),
+          title: scheduleTitle,
+          description: scheduleDescription,
+          tags: scheduleTags,
+        })
+        setScheduleSuccessMsg(`Successfully scheduled for ${schedulePlatform.toUpperCase()}!`)
+      }
 
-      setScheduleSuccessMsg(`Successfully scheduled for ${schedulePlatform.toUpperCase()}!`)
       setTimeout(() => {
         setSchedulingClip(null)
         setScheduleSuccessMsg(null)
-      }, 1500)
+      }, 1800)
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to schedule post')
+      alert(err instanceof Error ? err.message : 'Failed to publish/schedule post')
     } finally {
       setSchedulingSubmitting(false)
     }
@@ -618,10 +632,21 @@ export function ReviewPage() {
                           </button>
                         )}
 
+                        {/* Quick Publish Now shortcut */}
+                        <button
+                          onClick={() => openScheduleModal(clip, 'now')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-white hover:bg-stone-800 transition-colors shadow-xs"
+                          title="Upload and publish this clip immediately"
+                        >
+                          <Upload size={13} />
+                          Publish Now
+                        </button>
+
                         {/* Schedule shortcut */}
                         <button
-                          onClick={() => openScheduleModal(clip)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-accent-text hover:bg-accent-hover transition-colors shadow-xs"
+                          onClick={() => openScheduleModal(clip, 'schedule')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border bg-surface hover:bg-stone-100 transition-colors shadow-xs text-text"
+                          title="Schedule this clip for a future time"
                         >
                           <Calendar size={13} />
                           Schedule Post
@@ -697,24 +722,66 @@ export function ReviewPage() {
         )}
       </Modal>
 
-      {/* Schedule Modal */}
+      {/* Schedule / Publish Modal */}
       <Modal
         isOpen={Boolean(schedulingClip)}
         onClose={() => setSchedulingClip(null)}
-        title="Schedule for Social Media"
+        title={publishMode === 'now' ? "Publish Clip Immediately" : "Schedule for Social Media"}
         maxWidth="md"
       >
         <div className="space-y-4">
+          {/* Mode Switcher Tabs */}
+          {!scheduleSuccessMsg && (
+            <div className="flex p-1 bg-stone-100 rounded-lg text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setPublishMode('now')}
+                className={cn(
+                  "flex-1 py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5",
+                  publishMode === 'now'
+                    ? "bg-white text-stone-900 shadow-xs font-semibold"
+                    : "text-text-secondary hover:text-text"
+                )}
+              >
+                <Upload size={13} />
+                Publish Immediately
+              </button>
+              <button
+                type="button"
+                onClick={() => setPublishMode('schedule')}
+                className={cn(
+                  "flex-1 py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5",
+                  publishMode === 'schedule'
+                    ? "bg-white text-stone-900 shadow-xs font-semibold"
+                    : "text-text-secondary hover:text-text"
+                )}
+              >
+                <Calendar size={13} />
+                Schedule for Later
+              </button>
+            </div>
+          )}
+
           {scheduleSuccessMsg ? (
             <div className="p-6 text-center space-y-2">
               <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
                 <Check size={24} />
               </div>
               <p className="text-sm font-semibold text-text">{scheduleSuccessMsg}</p>
-              <p className="text-xs text-text-muted">You can view and manage it in the Calendar tab.</p>
+              <p className="text-xs text-text-muted">You can view live status and manage posts in the Calendar tab.</p>
             </div>
           ) : (
             <>
+              {/* Notice for Publish Now */}
+              {publishMode === 'now' && (
+                <div className="p-3 rounded-lg bg-stone-50 border border-border text-xs text-text-secondary flex items-start gap-2">
+                  <Upload size={15} className="text-accent shrink-0 mt-0.5" />
+                  <p>
+                    This clip will be uploaded to <span className="font-semibold text-text">{schedulePlatform === 'youtube' ? 'YouTube Shorts' : schedulePlatform === 'instagram' ? 'Instagram Reels' : 'X (Twitter)'}</span> immediately using your saved local browser session.
+                  </p>
+                </div>
+              )}
+
               {/* Platform selector */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">
@@ -739,18 +806,20 @@ export function ReviewPage() {
                 </div>
               </div>
 
-              {/* Date & Time */}
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-1">
-                  Publish Date & Time
-                </label>
-                <input
-                  type="datetime-local"
-                  value={scheduleDateTime}
-                  onChange={(e) => setScheduleDateTime(e.target.value)}
-                  className="w-full text-xs p-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-              </div>
+              {/* Date & Time (Only in schedule mode) */}
+              {publishMode === 'schedule' && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-1">
+                    Publish Date & Time
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={scheduleDateTime}
+                    onChange={(e) => setScheduleDateTime(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+              )}
 
               {/* Title */}
               <div>
@@ -806,16 +875,19 @@ export function ReviewPage() {
                 <button
                   type="button"
                   onClick={handleCreateSchedulePost}
-                  disabled={schedulingSubmitting || !scheduleDateTime}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors disabled:opacity-50 shadow-xs"
+                  disabled={schedulingSubmitting || (publishMode === 'schedule' && !scheduleDateTime)}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors disabled:opacity-50 shadow-xs"
                 >
                   {schedulingSubmitting ? (
                     <>
                       <Loader2 size={13} className="animate-spin" />
-                      Scheduling...
+                      {publishMode === 'now' ? 'Publishing Now...' : 'Scheduling...'}
                     </>
                   ) : (
-                    'Confirm Schedule'
+                    <>
+                      {publishMode === 'now' ? <Upload size={13} /> : <Calendar size={13} />}
+                      {publishMode === 'now' ? 'Publish Immediately' : 'Confirm Schedule'}
+                    </>
                   )}
                 </button>
               </div>

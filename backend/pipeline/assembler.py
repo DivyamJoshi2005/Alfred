@@ -135,9 +135,14 @@ def _format_visual_hook_text(text: str) -> str:
         if not target.endswith((".", "!", "?")):
             target += "?"
 
-    # Escape for FFmpeg drawtext: ' -> '', : -> ' - ', % -> %%
-    escaped = target.replace("'", "").replace(":", " - ").replace("%", "%%")
-    return escaped.upper().strip()
+    # Escape and sanitize characters that break FFmpeg drawtext or filter syntax
+    # Replace % with PERCENT so drawtext doesn't crash with "Stray %"
+    target = target.replace("%", " PERCENT")
+    target = target.replace(":", " - ").replace(";", " - ")
+    target = target.replace("'", "").replace('"', '').replace("\\", " ")
+    target = target.replace("[", "(").replace("]", ")")
+    target = " ".join(target.split())
+    return target.upper().strip()
 
 
 async def render_single_clip(
@@ -315,7 +320,9 @@ async def render_single_clip(
     _, stderr = await process.communicate()
 
     if process.returncode != 0:
-        raise RuntimeError(f"FFmpeg failed: {stderr.decode()[:500]}")
+        err_text = stderr.decode(errors="replace")
+        tail = err_text[-1500:] if len(err_text) > 1500 else err_text
+        raise RuntimeError(f"FFmpeg failed (exit code {process.returncode}):\n{tail.strip()}")
 
 
 # Backward-compatible alias

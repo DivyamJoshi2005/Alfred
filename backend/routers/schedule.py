@@ -2,10 +2,45 @@
 
 import uuid
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from models import ScheduleCreate, ScheduleUpdate, ScheduleResponse
+from models import ScheduleCreate, ScheduleUpdate, ScheduleResponse, PublishNowRequest
 from database import get_db
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
+
+
+@router.post("/publish-now", response_model=ScheduleResponse, status_code=201)
+async def publish_post_now(body: PublishNowRequest, background_tasks: BackgroundTasks):
+    """Immediately queue and upload a clip right now to a social platform."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM clips WHERE id = ?", (body.clip_id,))
+        clip = await cursor.fetchone()
+        if not clip:
+            raise HTTPException(status_code=404, detail="Clip not found")
+
+        # Auto-approve clip if not already marked approved
+        if clip["status"] != "approved":
+            await db.execute("UPDATE clips SET status = 'approved' WHERE id = ?", (body.clip_id,))
+            await db.commit()
+
+        post_id = str(uuid.uuid4())
+        await db.execute(
+            """INSERT INTO scheduled_posts (id, clip_id, platform, scheduled_at, title, description, tags, status, attempts)
+               VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 'scheduled', 0)""",
+            (post_id, body.clip_id, body.platform, body.title, body.description, body.tags),
+        )
+        await db.commit()
+
+        cursor = await db.execute("SELECT * FROM scheduled_posts WHERE id = ?", (post_id,))
+        row = await cursor.fetchone()
+
+        # Kick off background uploader immediately
+        from scheduler.worker import process_due_posts
+        background_tasks.add_task(process_due_posts)
+
+        return _row_to_response(row)
+    finally:
+        await db.close()
 
 
 @router.post("", response_model=ScheduleResponse, status_code=201)
