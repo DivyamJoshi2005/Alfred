@@ -32,7 +32,10 @@ export default function Review() {
   const [trimEnd, setTrimEnd] = useState<number>(0);
   const [framingMode, setFramingMode] = useState<FramingMode>('presentation_fit');
   const [audioMode, setAudioMode] = useState<AudioMode>('original');
+  const [appliedFramingMode, setAppliedFramingMode] = useState<FramingMode>('presentation_fit');
+  const [appliedAudioMode, setAppliedAudioMode] = useState<AudioMode>('original');
   const [isRerendering, setIsRerendering] = useState(false);
+  const [renderVersion, setRenderVersion] = useState<number>(Date.now());
 
   // Voiceover / Voice Cloning States
   const [voicePreset, setVoicePreset] = useState<string>('af_heart');
@@ -41,6 +44,53 @@ export default function Review() {
 
   const originalVideoRef = useRef<HTMLVideoElement>(null);
   const clipVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Synchronize 16:9 Context Footage with 9:16 Vertical Reel playback
+  const handleClipPlay = () => {
+    if (originalVideoRef.current && currentClip) {
+      originalVideoRef.current.muted = true; // Mute master video to avoid dual audio echo
+      originalVideoRef.current.currentTime = (currentClip.start_time || 0) + (clipVideoRef.current?.currentTime || 0);
+      originalVideoRef.current.play().catch(() => {});
+    }
+  };
+
+  const handleClipPause = () => {
+    if (originalVideoRef.current) {
+      originalVideoRef.current.pause();
+    }
+  };
+
+  const handleClipTimeUpdate = () => {
+    if (originalVideoRef.current && clipVideoRef.current && currentClip) {
+      const targetTime = (currentClip.start_time || 0) + clipVideoRef.current.currentTime;
+      if (Math.abs(originalVideoRef.current.currentTime - targetTime) > 0.3) {
+        originalVideoRef.current.currentTime = targetTime;
+      }
+    }
+  };
+
+  const handleClipSeeked = () => {
+    if (originalVideoRef.current && clipVideoRef.current && currentClip) {
+      originalVideoRef.current.currentTime = (currentClip.start_time || 0) + clipVideoRef.current.currentTime;
+    }
+  };
+
+  // Immediate tactile seeking when jog trimmer is adjusted
+  const handleTrimStartChange = (val: number) => {
+    const clamped = Math.max(0, Number(val.toFixed(1)));
+    setTrimStart(clamped);
+    if (originalVideoRef.current) {
+      originalVideoRef.current.currentTime = clamped;
+    }
+  };
+
+  const handleTrimEndChange = (val: number) => {
+    const clamped = Math.max(trimStart + 0.5, Number(val.toFixed(1)));
+    setTrimEnd(clamped);
+    if (originalVideoRef.current) {
+      originalVideoRef.current.currentTime = clamped;
+    }
+  };
 
   // 1. Initial jobs fetch
   useEffect(() => {
@@ -66,6 +116,15 @@ export default function Review() {
   const activeJob = jobs.find(j => j.id === selectedJobId);
   const currentClip: Clip | undefined = clips[activeClipIndex];
 
+  // Detect uncommitted cut parameters (trim times, hook copy, framing layout, or audio master mode)
+  const hasPendingChanges = currentClip ? (
+    Math.abs(trimStart - (currentClip.start_time || 0)) > 0.05 ||
+    Math.abs(trimEnd - (currentClip.end_time || 0)) > 0.05 ||
+    hookDraft !== (currentClip.hook_text || '') ||
+    framingMode !== appliedFramingMode ||
+    audioMode !== appliedAudioMode
+  ) : false;
+
   // Sync draft when active clip changes
   useEffect(() => {
     if (currentClip) {
@@ -73,6 +132,12 @@ export default function Review() {
       setTrimStart(Math.round(currentClip.start_time * 10) / 10);
       setTrimEnd(Math.round(currentClip.end_time * 10) / 10);
       setEditingHook(false);
+
+      const initialAudio = currentClip.hook_audio_path ? 'voiceover' : 'original';
+      setAudioMode(initialAudio);
+      setAppliedAudioMode(initialAudio);
+      setFramingMode('presentation_fit');
+      setAppliedFramingMode('presentation_fit');
 
       if (originalVideoRef.current && currentClip.start_time !== undefined) {
         originalVideoRef.current.currentTime = currentClip.start_time;
@@ -84,15 +149,22 @@ export default function Review() {
     if (!currentClip) return;
     setIsRerendering(true);
     try {
-      await rerenderClip(currentClip.id, {
+      const updated = await rerenderClip(currentClip.id, {
         start_time: trimStart,
         end_time: trimEnd,
         framing_mode: framingMode,
         audio_mode: audioMode,
         hook_text: hookDraft,
       });
+      setAppliedFramingMode(framingMode);
+      setAppliedAudioMode(audioMode);
+      await fetchClips(selectedJobId);
+      const newVer = Date.now();
+      setRenderVersion(newVer);
       if (clipVideoRef.current) {
+        clipVideoRef.current.src = api.getVideoSrc(updated.output_path, newVer);
         clipVideoRef.current.load();
+        clipVideoRef.current.play().catch(() => {});
       }
     } catch (e) {
       console.error('Rerender failed:', e);
@@ -371,13 +443,174 @@ export default function Review() {
               <div className="phone-viewport-container">
                 <div className="phone-notch" />
                 <div className="phone-screen">
+                  {/* LIVE VISUAL HOOK HEADLINE OVERLAY */}
+                  {hookDraft && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '36px',
+                      left: '10px',
+                      right: '10px',
+                      zIndex: 14,
+                      display: 'flex',
+                      justifyContent: 'center',
+                      pointerEvents: 'none',
+                    }}>
+                      <div style={{
+                        background: 'rgba(0, 0, 0, 0.88)',
+                        border: '1.5px solid rgba(255, 255, 255, 0.4)',
+                        padding: '4px 10px',
+                        borderRadius: '4px',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 800,
+                        fontSize: '11px',
+                        color: '#ffffff',
+                        letterSpacing: '0.04em',
+                        textAlign: 'center',
+                        boxShadow: '0 4px 14px rgba(0,0,0,0.7)',
+                        maxWidth: '92%',
+                      }}>
+                        {getVisualHeadline(hookDraft)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* LIVE FRAMING MODE BADGE */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '12px',
+                    left: '12px',
+                    zIndex: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: 'rgba(0,0,0,0.75)',
+                    padding: '2px 7px',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    pointerEvents: 'none',
+                  }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', fontWeight: 600, color: 'var(--accent-mint)' }}>
+                      {framingMode === 'presentation_fit' ? 'CANVAS FIT' : framingMode === 'split_screen' ? 'STACKED SPLIT' : 'FACE FOCUS'}
+                    </span>
+                  </div>
+
+                  {/* PENDING CHANGES FLOATING ACTION BUTTON */}
+                  {hasPendingChanges && !isRerendering && (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={handleRerender}
+                      style={{
+                        position: 'absolute',
+                        bottom: '14px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 25,
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 4px 16px rgba(235, 94, 40, 0.7)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                      title="Bake new crop, timing, or audio settings into video"
+                    >
+                      <ScissorsIcon size={13} />
+                      <span>⚡ Apply & Re-Render</span>
+                    </button>
+                  )}
+
+                  {/* RE-RENDERING SPINNER OVERLAY */}
+                  {isRerendering && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'rgba(5, 5, 7, 0.88)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 30,
+                      gap: '8px',
+                    }}>
+                      <div className="spinner" style={{ width: '28px', height: '28px', borderWidth: '3px' }} />
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600, color: 'var(--accent-vermilion)' }}>
+                        [RENDERING CUT...]
+                      </span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-tertiary)' }}>
+                        Applying {framingMode} framing
+                      </span>
+                    </div>
+                  )}
+
+                  {/* DYNAMIC FRAMING GUIDE OVERLAYS */}
+                  {framingMode === 'split_screen' && (
+                    <>
+                      <div style={{
+                        position: 'absolute',
+                        top: '42%',
+                        left: 0,
+                        right: 0,
+                        height: '2px',
+                        borderTop: '2px dashed var(--accent-vermilion)',
+                        zIndex: 11,
+                        pointerEvents: 'none',
+                      }} />
+                      <div style={{
+                        position: 'absolute',
+                        top: '44%',
+                        left: '8px',
+                        padding: '2px 6px',
+                        background: 'rgba(0,0,0,0.7)',
+                        borderRadius: '4px',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '8px',
+                        color: 'var(--accent-vermilion)',
+                        zIndex: 12,
+                        pointerEvents: 'none',
+                      }}>
+                        📑 SLIDES (LOWER TIER)
+                      </div>
+                    </>
+                  )}
+                  {framingMode === 'face_focus' && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '25%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: '120px',
+                      height: '120px',
+                      border: '2px dashed var(--accent-mint)',
+                      borderRadius: '50%',
+                      zIndex: 11,
+                      pointerEvents: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--accent-mint)', background: 'rgba(0,0,0,0.6)', padding: '1px 4px', borderRadius: '2px' }}>
+                        👤 SPEAKER RETICLE
+                      </span>
+                    </div>
+                  )}
+
                   {currentClip.output_path ? (
                     <video
+                      key={`${currentClip.id}-${renderVersion}`}
                       ref={clipVideoRef}
-                      src={api.getVideoSrc(currentClip.output_path)}
+                      src={api.getVideoSrc(currentClip.output_path, renderVersion)}
                       controls
                       loop
                       preload="metadata"
+                      onPlay={handleClipPlay}
+                      onPause={handleClipPause}
+                      onTimeUpdate={handleClipTimeUpdate}
+                      onSeeked={handleClipSeeked}
                     />
                   ) : (
                     <div style={{
@@ -417,14 +650,14 @@ export default function Review() {
               <button
                 className="jog-btn"
                 title="Nudge back 5 seconds"
-                onClick={() => setTrimStart(Math.max(0, Number((trimStart - 5).toFixed(1))))}
+                onClick={() => handleTrimStartChange(trimStart - 5)}
               >
                 -5s
               </button>
               <button
                 className="jog-btn"
                 title="Nudge back 1 second"
-                onClick={() => setTrimStart(Math.max(0, Number((trimStart - 1).toFixed(1))))}
+                onClick={() => handleTrimStartChange(trimStart - 1)}
               >
                 -1s
               </button>
@@ -433,19 +666,19 @@ export default function Review() {
                 step="0.5"
                 className="jog-input"
                 value={trimStart}
-                onChange={(e) => setTrimStart(Math.max(0, parseFloat(e.target.value) || 0))}
+                onChange={(e) => handleTrimStartChange(parseFloat(e.target.value) || 0)}
               />
               <button
                 className="jog-btn"
                 title="Nudge forward 1 second"
-                onClick={() => setTrimStart(Number((trimStart + 1).toFixed(1)))}
+                onClick={() => handleTrimStartChange(trimStart + 1)}
               >
                 +1s
               </button>
               <button
                 className="jog-btn"
                 title="Nudge forward 5 seconds"
-                onClick={() => setTrimStart(Number((trimStart + 5).toFixed(1)))}
+                onClick={() => handleTrimStartChange(trimStart + 5)}
               >
                 +5s
               </button>
@@ -476,14 +709,14 @@ export default function Review() {
               <button
                 className="jog-btn"
                 title="Nudge back 5 seconds"
-                onClick={() => setTrimEnd(Math.max(trimStart + 1, Number((trimEnd - 5).toFixed(1))))}
+                onClick={() => handleTrimEndChange(trimEnd - 5)}
               >
                 -5s
               </button>
               <button
                 className="jog-btn"
                 title="Nudge back 1 second"
-                onClick={() => setTrimEnd(Math.max(trimStart + 1, Number((trimEnd - 1).toFixed(1))))}
+                onClick={() => handleTrimEndChange(trimEnd - 1)}
               >
                 -1s
               </button>
@@ -492,19 +725,19 @@ export default function Review() {
                 step="0.5"
                 className="jog-input"
                 value={trimEnd}
-                onChange={(e) => setTrimEnd(Math.max(trimStart + 1, parseFloat(e.target.value) || trimStart + 1))}
+                onChange={(e) => handleTrimEndChange(parseFloat(e.target.value) || trimStart + 1)}
               />
               <button
                 className="jog-btn"
                 title="Nudge forward 1 second"
-                onClick={() => setTrimEnd(Number((trimEnd + 1).toFixed(1)))}
+                onClick={() => handleTrimEndChange(trimEnd + 1)}
               >
                 +1s
               </button>
               <button
                 className="jog-btn"
                 title="Nudge forward 5 seconds"
-                onClick={() => setTrimEnd(Number((trimEnd + 5).toFixed(1)))}
+                onClick={() => handleTrimEndChange(trimEnd + 5)}
               >
                 +5s
               </button>
@@ -539,9 +772,21 @@ export default function Review() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span className="jog-label">9:16 Video Framing Layout</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--accent-mint)' }}>
-                    {framingMode === 'presentation_fit' ? '100% SLIDES PRESERVED' : framingMode === 'split_screen' ? 'DUAL STACKED' : 'FACE TRACKING'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--accent-mint)' }}>
+                      {framingMode === 'presentation_fit' ? '100% SLIDES PRESERVED' : framingMode === 'split_screen' ? 'DUAL STACKED' : 'FACE TRACKING'}
+                    </span>
+                    {framingMode !== appliedFramingMode && (
+                      <button
+                        className="btn btn-primary btn-xs"
+                        onClick={handleRerender}
+                        disabled={isRerendering}
+                        style={{ padding: '2px 8px', fontSize: '9px' }}
+                      >
+                        ⚡ Apply Layout
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="segment-group">
                   <button
@@ -574,9 +819,21 @@ export default function Review() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span className="jog-label">Audio Master Track</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--accent-amber)' }}>
-                    {audioMode === 'original' ? 'CLEAN NATURAL SPEECH' : audioMode === 'preroll' ? 'PRE-ROLL INTRO' : 'VOICEOVER DUCKED'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--accent-amber)' }}>
+                      {audioMode === 'original' ? 'CLEAN NATURAL SPEECH' : audioMode === 'preroll' ? 'PRE-ROLL INTRO' : 'VOICEOVER DUCKED'}
+                    </span>
+                    {audioMode !== appliedAudioMode && (
+                      <button
+                        className="btn btn-primary btn-xs"
+                        onClick={handleRerender}
+                        disabled={isRerendering}
+                        style={{ padding: '2px 8px', fontSize: '9px' }}
+                      >
+                        ⚡ Apply Audio
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="segment-group">
                   <button

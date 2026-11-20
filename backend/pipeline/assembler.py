@@ -18,13 +18,15 @@ async def assemble_clips(
     segments: list[dict[str, Any]],
     output_dir: Path,
     job_id: str,
+    framing_mode: str = "presentation_fit",
+    audio_mode: str | None = None,
 ) -> list[dict[str, Any]]:
     """Assemble final clips: slice video, apply smart crop, overlay TTS hook.
 
     For each segment:
     1. Slice source at segment timestamps
-    2. Apply 9:16 smart crop (face-tracked or center)
-    3. Overlay TTS hook audio at the beginning (if available)
+    2. Apply 9:16 smart crop (presentation_fit, split_screen, or face_focus)
+    3. Overlay TTS hook audio if available (voiceover ducking or preroll)
     4. Encode as MP4 H.264 + AAC
 
     Returns segments with 'output_path' added.
@@ -48,6 +50,11 @@ async def assemble_clips(
         crop_coords = seg.get("crop_coords")
         hook_text = seg.get("hook_text")
 
+        # Default to voiceover mode when hook audio is available
+        chosen_audio_mode = audio_mode
+        if chosen_audio_mode is None:
+            chosen_audio_mode = "voiceover" if (hook_audio and Path(hook_audio).exists()) else "original"
+
         try:
             await _render_clip(
                 video_path=video_path,
@@ -57,6 +64,8 @@ async def assemble_clips(
                 crop_coords=crop_coords,
                 hook_audio_path=hook_audio,
                 hook_text=hook_text,
+                framing_mode=framing_mode,
+                audio_mode=chosen_audio_mode,
             )
             seg["output_path"] = str(output_path)
         except Exception as e:
@@ -226,14 +235,25 @@ async def render_single_clip(
         )
 
     # 2. Audio & FFmpeg Command Assembly
+    clip_dur = max(1.0, round(end_time - start_time, 3))
     cmd = [
         FFMPEG_PATH,
         "-ss", str(start_time),
-        "-to", str(end_time),
+        "-t", str(clip_dur),
         "-i", str(video_path),
     ]
 
     has_hook = bool(hook_audio_path and Path(hook_audio_path).exists())
+
+    # Dynamically measure hook duration to calibrate audio ducking
+    hook_duck_sec = 3.0
+    if has_hook:
+        try:
+            import soundfile as sf
+            _info = sf.info(str(hook_audio_path))
+            hook_duck_sec = max(1.0, round(_info.duration + 0.35, 2))
+        except Exception:
+            pass
 
     if audio_mode == "preroll" and has_hook:
         cmd.extend(["-i", str(hook_audio_path)])
@@ -247,7 +267,7 @@ async def render_single_clip(
         cmd.extend(["-i", str(hook_audio_path)])
         cmd.extend([
             "-filter_complex",
-            f"{v_filter};[0:a]volume='if(lt(t,3.0),0.15,1.0)':eval=frame[ducked];[1:a]apad=pad_len=0[hk];[ducked][hk]amix=inputs=2:duration=first:dropout_transition=2[a]",
+            f"{v_filter};[0:a]volume='if(lt(t,{hook_duck_sec}),0.15,1.0)':eval=frame[ducked];[1:a]apad=pad_len=0[hk];[ducked][hk]amix=inputs=2:duration=first:dropout_transition=2[a]",
             "-map", "[v]",
             "-map", "[a]",
         ])
@@ -292,10 +312,11 @@ async def _render_clip_simple(
     output_path: Path,
 ):
     """Simple fallback render — center crop to 9:16, no TTS overlay."""
+    clip_dur = max(1.0, round(end_time - start_time, 3))
     cmd = [
         FFMPEG_PATH,
         "-ss", str(start_time),
-        "-to", str(end_time),
+        "-t", str(clip_dur),
         "-i", str(video_path),
         "-vf", "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:flags=lanczos",
         "-c:v", OUTPUT_VIDEO_CODEC,

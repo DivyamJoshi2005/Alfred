@@ -6,6 +6,31 @@ from database import get_db
 router = APIRouter(prefix="/api/clips", tags=["clips"])
 
 
+def _row_to_clip_response(row) -> ClipResponse:
+    keys = row.keys() if hasattr(row, "keys") else []
+    return ClipResponse(
+        id=row["id"],
+        job_id=row["job_id"],
+        rank=row["rank"],
+        start_time=row["start_time"],
+        end_time=row["end_time"],
+        duration=row["duration"],
+        transcript_text=row["transcript_text"],
+        hook_text=row["hook_text"],
+        hook_audio_path=row["hook_audio_path"],
+        output_path=row["output_path"],
+        status=row["status"],
+        rationale=row["rationale"],
+        visual_score=row["visual_score"] if "visual_score" in keys else 0.0,
+        audio_score=row["audio_score"] if "audio_score" in keys else 0.0,
+        hook_score=row["hook_score"] if "hook_score" in keys else 0.0,
+        retention_score=row["retention_score"] if "retention_score" in keys else 0.0,
+        visual_hook_rationale=row["visual_hook_rationale"] if "visual_hook_rationale" in keys else None,
+        storyboard_paths=row["storyboard_paths"] if "storyboard_paths" in keys else None,
+        created_at=row["created_at"],
+    )
+
+
 @router.get("/job/{job_id}", response_model=list[ClipResponse])
 async def list_clips_for_job(job_id: str):
     """List all clips for a specific job, ordered by rank."""
@@ -15,17 +40,7 @@ async def list_clips_for_job(job_id: str):
             "SELECT * FROM clips WHERE job_id = ? ORDER BY rank", (job_id,)
         )
         rows = await cursor.fetchall()
-        return [
-            ClipResponse(
-                id=row["id"], job_id=row["job_id"], rank=row["rank"],
-                start_time=row["start_time"], end_time=row["end_time"],
-                duration=row["duration"], transcript_text=row["transcript_text"],
-                hook_text=row["hook_text"], hook_audio_path=row["hook_audio_path"],
-                output_path=row["output_path"], status=row["status"],
-                rationale=row["rationale"], created_at=row["created_at"],
-            )
-            for row in rows
-        ]
+        return [_row_to_clip_response(row) for row in rows]
     finally:
         await db.close()
 
@@ -84,14 +99,7 @@ async def update_clip(clip_id: str, body: ClipUpdate):
 
         cursor = await db.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
         updated = await cursor.fetchone()
-        return ClipResponse(
-            id=updated["id"], job_id=updated["job_id"], rank=updated["rank"],
-            start_time=updated["start_time"], end_time=updated["end_time"],
-            duration=updated["duration"], transcript_text=updated["transcript_text"],
-            hook_text=updated["hook_text"], hook_audio_path=updated["hook_audio_path"],
-            output_path=updated["output_path"], status=updated["status"],
-            rationale=updated["rationale"], created_at=updated["created_at"],
-        )
+        return _row_to_clip_response(updated)
     finally:
         await db.close()
 
@@ -123,7 +131,6 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
         duration = end_time - start_time
         hook_text = body.hook_text if body.hook_text is not None else clip["hook_text"]
         framing_mode = body.framing_mode or "presentation_fit"
-        audio_mode = body.audio_mode or "original"
 
         from config import ALFRED_PROJECTS_DIR
         output_path = (
@@ -132,6 +139,24 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
             else ALFRED_PROJECTS_DIR / job["video_name"] / "clips" / f"clip_{clip['rank']}.mp4"
         )
 
+        # If hook text changed, re-synthesize hook voiceover audio
+        hook_audio_path = clip["hook_audio_path"]
+        if hook_text and (hook_text != clip["hook_text"] or not hook_audio_path or not Path(hook_audio_path).exists()):
+            try:
+                from pipeline.tts import get_tts_engine
+                tts = get_tts_engine()
+                clips_dir = ALFRED_PROJECTS_DIR / job["video_name"] / "clips"
+                clips_dir.mkdir(parents=True, exist_ok=True)
+                tts_out = clips_dir / f"hook_{clip['rank']}.wav"
+                tts.synthesize(hook_text, tts_out, voice="af_bella")
+                hook_audio_path = str(tts_out)
+            except Exception as e:
+                print(f"[Rerender] Failed to re-synthesize hook audio: {e}")
+
+        audio_mode = body.audio_mode
+        if not audio_mode:
+            audio_mode = "voiceover" if (hook_audio_path and Path(hook_audio_path).exists()) else "original"
+
         from pipeline.assembler import render_single_clip
         await render_single_clip(
             video_path=video_path,
@@ -139,7 +164,7 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
             end_time=end_time,
             output_path=output_path,
             crop_coords=None,
-            hook_audio_path=clip["hook_audio_path"],
+            hook_audio_path=hook_audio_path,
             hook_text=hook_text,
             framing_mode=framing_mode,
             audio_mode=audio_mode,
@@ -147,22 +172,15 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
 
         await db.execute(
             """UPDATE clips
-               SET start_time = ?, end_time = ?, duration = ?, hook_text = ?, output_path = ?, status = 'rendered'
+               SET start_time = ?, end_time = ?, duration = ?, hook_text = ?, hook_audio_path = ?, output_path = ?, status = 'rendered'
                WHERE id = ?""",
-            (start_time, end_time, duration, hook_text, str(output_path), clip_id),
+            (start_time, end_time, duration, hook_text, str(hook_audio_path) if hook_audio_path else None, str(output_path), clip_id),
         )
         await db.commit()
 
         updated_cur = await db.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
         updated = await updated_cur.fetchone()
-        return ClipResponse(
-            id=updated["id"], job_id=updated["job_id"], rank=updated["rank"],
-            start_time=updated["start_time"], end_time=updated["end_time"],
-            duration=updated["duration"], transcript_text=updated["transcript_text"],
-            hook_text=updated["hook_text"], hook_audio_path=updated["hook_audio_path"],
-            output_path=updated["output_path"], status=updated["status"],
-            rationale=updated["rationale"], created_at=updated["created_at"],
-        )
+        return _row_to_clip_response(updated)
     finally:
         await db.close()
 

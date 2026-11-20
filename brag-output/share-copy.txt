@@ -1,0 +1,1 @@
+Introducing Alfred: an autonomous desktop studio for turning long-form video into viral 9:16 shorts. Featuring Whisper INT8 word-level transcripts, smart pan-and-scan framing, an NLE review jog deck, OpenVoice v2 cloning, and automated social broadcast — 100% on-device with zero cloud lock-in.

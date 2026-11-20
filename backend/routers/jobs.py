@@ -3,7 +3,7 @@
 import uuid
 import asyncio
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from models import JobCreate, JobResponse, JobDetailResponse, ClipResponse
 from database import get_db
 from config import SUPPORTED_VIDEO_EXTENSIONS
@@ -98,6 +98,68 @@ async def list_local_videos():
     return results
 
 
+@router.post("/upload", response_model=JobResponse, status_code=201)
+async def upload_and_create_job(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+):
+    """Upload a video file directly from browser drag-and-drop and queue processing."""
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in SUPPORTED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format: {suffix}. Supported: {', '.join(SUPPORTED_VIDEO_EXTENSIONS)}"
+        )
+
+    from config import ALFRED_PROJECTS_DIR
+    uploads_dir = ALFRED_PROJECTS_DIR / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    clean_filename = Path(file.filename or "video.mp4").name
+    save_path = uploads_dir / clean_filename
+    counter = 1
+    while save_path.exists():
+        save_path = uploads_dir / f"{Path(clean_filename).stem}_{counter}{suffix}"
+        counter += 1
+
+    import shutil
+    try:
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save video: {e}")
+
+    job_id = str(uuid.uuid4())
+    video_name = save_path.stem
+
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO jobs (id, video_path, video_name, status) VALUES (?, ?, ?, 'queued')",
+            (job_id, str(save_path), video_name),
+        )
+        await db.commit()
+
+        row = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        job = await row.fetchone()
+
+        # Trigger pipeline in background
+        from pipeline.orchestrator import run_pipeline
+        background_tasks.add_task(run_pipeline, job_id)
+
+        return JobResponse(
+            id=job["id"],
+            video_path=job["video_path"],
+            video_name=job["video_name"],
+            status=job["status"],
+            created_at=job["created_at"],
+            updated_at=job["updated_at"],
+            error_msg=job["error_msg"],
+        )
+    finally:
+        await db.close()
+
+
 @router.post("", response_model=JobResponse, status_code=201)
 async def create_job(body: JobCreate, background_tasks: BackgroundTasks):
     """Create a new video processing job."""
@@ -182,24 +244,32 @@ async def get_job(job_id: str):
             "SELECT * FROM clips WHERE job_id = ? ORDER BY rank", (job_id,)
         )
         clip_rows = await clip_cursor.fetchall()
-        clips = [
-            ClipResponse(
-                id=c["id"],
-                job_id=c["job_id"],
-                rank=c["rank"],
-                start_time=c["start_time"],
-                end_time=c["end_time"],
-                duration=c["duration"],
-                transcript_text=c["transcript_text"],
-                hook_text=c["hook_text"],
-                hook_audio_path=c["hook_audio_path"],
-                output_path=c["output_path"],
-                status=c["status"],
-                rationale=c["rationale"],
-                created_at=c["created_at"],
+        clips = []
+        for c in clip_rows:
+            c_keys = c.keys() if hasattr(c, "keys") else []
+            clips.append(
+                ClipResponse(
+                    id=c["id"],
+                    job_id=c["job_id"],
+                    rank=c["rank"],
+                    start_time=c["start_time"],
+                    end_time=c["end_time"],
+                    duration=c["duration"],
+                    transcript_text=c["transcript_text"],
+                    hook_text=c["hook_text"],
+                    hook_audio_path=c["hook_audio_path"],
+                    output_path=c["output_path"],
+                    status=c["status"],
+                    rationale=c["rationale"],
+                    visual_score=c["visual_score"] if "visual_score" in c_keys else 0.0,
+                    audio_score=c["audio_score"] if "audio_score" in c_keys else 0.0,
+                    hook_score=c["hook_score"] if "hook_score" in c_keys else 0.0,
+                    retention_score=c["retention_score"] if "retention_score" in c_keys else 0.0,
+                    visual_hook_rationale=c["visual_hook_rationale"] if "visual_hook_rationale" in c_keys else None,
+                    storyboard_paths=c["storyboard_paths"] if "storyboard_paths" in c_keys else None,
+                    created_at=c["created_at"],
+                )
             )
-            for c in clip_rows
-        ]
 
         return JobDetailResponse(
             id=job["id"],

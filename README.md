@@ -272,10 +272,12 @@ Every tool and dependency in Alfred has been chosen for maximum local execution 
 | **Embedded Database** | [SQLite](https://www.sqlite.org/) | `3.45+` | Zero-configuration, file-based embedded relational database with zero external server dependencies. |
 | **Async DB Driver** | [aiosqlite](https://aiosqlite.omnilib.dev/) | `0.20` | Non-blocking asynchronous SQLite bindings for high-throughput database queries. |
 | **Schema Validation** | [Pydantic](https://docs.pydantic.dev/) | `v2.10` | C-speed data validation, request sanitization, and JSON schema generation. |
-| **Speech-to-Text** | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | `1.1` | 4x faster OpenAI Whisper implementation using CTranslate2 with INT8 quantization. |
+| **Speech-to-Text** | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | `1.1` | OpenAI Whisper implementation using CTranslate2 INT8 quantization, 5-beam search & Silero VAD. |
+| **LLM Inference** | [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) | `0.3.7` | Local Llama 3.2 1B Instruct GGUF (Q4_K_M) runtime for viral highlight ranking and hook writing. |
 | **Voice Synthesis** | [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) | `0.19 ONNX` | Ultra-fast 82M parameter local TTS model with natural phrasing and human prosody. |
+| **Voice Cloning** | [OpenVoice v2](https://github.com/myshell-ai/OpenVoice) | `v2.0` | Speaker tone converter transferring acoustic embeddings to synthesized narration offline. |
 | **Neural Runtime** | [ONNX Runtime](https://onnxruntime.ai/) | `1.20` | Cross-platform neural inference engine optimized for CPU and CUDA backends. |
-| **Computer Vision** | [OpenCV](https://opencv.org/) & [MediaPipe](https://mediapipe.dev/) | `4.10` / `0.10` | Face detection, facial tracking coordinates, and presentation slide boundary detection. |
+| **Computer Vision** | [YOLOv8n-Face](https://github.com/akanametov/yolo-face) & OpenCV | `1.0` / `4.10` | Real-time face detection, dynamic 9:16 framing tracking, and optical-flow motion analysis. |
 | **Media Processing** | [FFmpeg](https://ffmpeg.org/) & [FFprobe](https://ffmpeg.org/) | `6.0+` | Video slicing, aspect ratio transformation, audio sidechain ducking, and subtitle rendering. |
 
 ---
@@ -288,9 +290,12 @@ Every tool and dependency in Alfred has been chosen for maximum local execution 
 - **Job Recovery**: Persists job metadata in local SQLite, allowing projects to be re-opened across desktop sessions.
 
 ### 2. Multi-Model AI Highlight Extraction & Viral Scoring
-- **Speech-to-Text**: High-speed, word-level audio transcription utilizing `faster-whisper`.
-- **Heuristic & Semantic Scoring**: Identifies peak narrative tension, strong thesis statements, punchy questions, and audience reactions.
-- **Clean Sentence Boundaries**: Avoids awkward mid-sentence cutoffs by snapping slice boundaries to punctuation and natural pauses.
+- **Studio Audio Transcription with Silero VAD**: High-speed, word-level audio transcription utilizing `faster-whisper` (`base.en` / `small.en`) with 5-path beam search and Silero Voice Activity Detection to completely eliminate music and background noise hallucinations.
+- **Multimodal Visual & Audio Hook Analyzer**: Analyzes optical flow motion energy (2 fps), scene-cut boundaries, and dynamic audio RMS energy spikes (catches laughter, gasps, applause, and sonic swells) to locate high-impact moments in both dialogue-driven talks and visual travel vlogs.
+- **4-Frame Visual Hook Storyboards**: Automatically generates `+0.0s`, `+1.0s`, `+2.0s`, and `+3.0s` proof frames in the review deck, giving creators visual confirmation of the first 3 seconds of scroll-stopping energy before rendering.
+- **Calibrated Viral Retention Scores (0–100%)**: Replaced arbitrary flat scoring with a non-linear percentile index where top highlight moments achieve 88%–96% predicted retention, accompanied by clear human-readable narrative explanations.
+- **Llama 3.2 1B Instruct Hooks**: Employs local Llama 3.2 1B (`llama-3.2-1b.Q4_K_M.gguf`) to craft compelling, context-aware viral openers and eliminate generic filler phrases.
+- **Clean Sentence Boundaries**: Avoids awkward mid-sentence cutoffs by snapping slice boundaries to grammatical punctuation and natural acoustic pauses.
 
 ### 3. Multi-Framing 9:16 Layout Engine (Zero Slide Cutoff)
 Standard video croppers blind-crop the center 9:16 vertical slice, chopping off 60% of technical slides. Alfred offers three distinct presentation framing strategies:
@@ -312,10 +317,11 @@ Prevents synthetic AI voiceovers from clashing with the speaker’s original wor
 - 🎚️ **Ducked Voiceover (`voiceover`)**: Dynamically ducks master speaker audio under synthesized narration.
 
 ### 6. Kokoro-82M Voice Cloning & Narration Studio
-- **Ultra-Fast Local TTS**: Integrated **Kokoro-82M ONNX** engine running locally on CPU or GPU.
+- **Ultra-Fast Local TTS**: Integrated **Kokoro-82M ONNX** engine running locally on CPU or GPU with zero cloud latency.
 - **Vocal Presets**: High-fidelity voices including `Heart` (Female), `Adam` (Male), `Bella` (Expressive), and `Michael` (Studio).
-- **Voice Cloning Profile**: Clones vocal timber from 5-second clean reference slices without cloud dependencies.
-- **Isolated Audition Player**: Dedicated audio player allowing you to preview and re-generate voice tracks independently before baking into video.
+- **In-Browser Reference Voice Recorder**: Record 10–15s reference voice samples directly from the studio settings using your microphone with guided prompt cards, live timers, and audio preview playback.
+- **OpenVoice v2 Tone Conversion**: Extracts speaker acoustic embeddings and transfers personal timbre to generated hooks completely offline.
+- **Isolated Audition Player**: Dedicated audio player allowing you to preview, synthesize, and re-generate voice tracks independently before baking into video.
 
 ### 7. Mute-Proof Visual Hook Engine
 Over 80% of social feeds are scrolled on mute:

@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Alfred — Studio Edition (60s Extended)</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: local('Space Grotesk'), local('SpaceGrotesk');
+      }
+      @font-face {
+        font-family: 'Plus Jakarta Sans';
+        src: local('Plus Jakarta Sans'), local('PlusJakartaSans');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: local('JetBrains Mono'), local('JetBrainsMono');
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #08090b;
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      .studio-nav-header {
+        position: absolute;
+        top: 28px;
+        left: 64px;
+        right: 64px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 100;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+        padding-bottom: 14px;
+      }
+
+      .studio-brand-badge {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .studio-monogram {
+        width: 34px;
+        height: 34px;
+        background: #ff7559;
+        color: #08090b;
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-weight: 700;
+        font-size: 19px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+      }
+
+      .studio-name {
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: #f5f3ee;
+        text-transform: uppercase;
+      }
+
+      .studio-status-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        color: #f5ba42;
+        background: rgba(245, 186, 66, 0.14);
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: 1px solid rgba(245, 186, 66, 0.4);
+        text-transform: uppercase;
+      }
+
+      .studio-telemetry-strip {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: #c5cad6;
+      }
+
+      .telemetry-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .telemetry-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #34d399;
+        box-shadow: 0 0 8px #34d399;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="alfred-showcase"
+      data-start="0"
+      data-duration="60"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Studio Global Nav Header -->
+      <header class="studio-nav-header">
+        <div class="studio-brand-badge">
+          <div class="studio-monogram">A</div>
+          <div class="studio-name">Alfred</div>
+          <div class="studio-status-tag">Studio Edition · Offline</div>
+        </div>
+        <div class="studio-telemetry-strip">
+          <div class="telemetry-item">
+            <div class="telemetry-dot"></div>
+            <span>DAEMON :8741</span>
+          </div>
+          <div class="telemetry-item">
+            <span>faster-whisper INT8</span>
+          </div>
+          <div class="telemetry-item">
+            <span>Kokoro-82M ONNX</span>
+          </div>
+          <div class="telemetry-item">
+            <span>OpenVoice v2</span>
+          </div>
+          <div class="telemetry-item">
+            <span style="color: #34d399">0 Cloud Fees</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Mounted Scenes via sub-compositions -->
+      <!-- Scene 1: Dashboard & Architecture (0.0s - 8.0s) -->
+      <div
+        id="scene-1-clip"
+        class="clip"
+        data-composition-id="scene-1"
+        data-composition-src="compositions/scene-1.html"
+        data-start="0"
+        data-duration="8"
+        data-track-index="1"
+      ></div>
+
+      <!-- Scene 2: Ingest Bay & Whisper INT8 Transcript (8.0s - 16.0s) -->
+      <div
+        id="scene-2-clip"
+        class="clip"
+        data-composition-id="scene-2"
+        data-composition-src="compositions/scene-2.html"
+        data-start="8"
+        data-duration="8"
+        data-track-index="2"
+      ></div>
+
+      <!-- Scene 3: Computer Vision & 9:16 Reframing (16.0s - 25.0s) -->
+      <div
+        id="scene-3-clip"
+        class="clip"
+        data-composition-id="scene-3"
+        data-composition-src="compositions/scene-3.html"
+        data-start="16"
+        data-duration="9"
+        data-track-index="1"
+      ></div>
+
+      <!-- Scene 4: Review Suite & NLE Jog Deck (25.0s - 35.0s) -->
+      <div
+        id="scene-4-clip"
+        class="clip"
+        data-composition-id="scene-4"
+        data-composition-src="compositions/scene-4.html"
+        data-start="25"
+        data-duration="10"
+        data-track-index="2"
+      ></div>
+
+      <!-- Scene 5: Voice Cloning & Kokoro TTS (35.0s - 44.0s) -->
+      <div
+        id="scene-5-clip"
+        class="clip"
+        data-composition-id="scene-5"
+        data-composition-src="compositions/scene-5.html"
+        data-start="35"
+        data-duration="9"
+        data-track-index="1"
+      ></div>
+
+      <!-- Scene 6: Transmission Calendar & Broadcast (44.0s - 52.0s) -->
+      <div
+        id="scene-6-clip"
+        class="clip"
+        data-composition-id="scene-6"
+        data-composition-src="compositions/scene-6.html"
+        data-start="44"
+        data-duration="8"
+        data-track-index="2"
+      ></div>
+
+      <!-- Scene 7: Machine Calibration & Outro (52.0s - 60.0s) -->
+      <div
+        id="scene-7-clip"
+        class="clip"
+        data-composition-id="scene-7"
+        data-composition-src="compositions/scene-7.html"
+        data-start="52"
+        data-duration="8"
+        data-track-index="1"
+      ></div>
+
+      <!-- Persistent Audio Tracks -->
+      <audio
+        id="bgm"
+        src="assets/music/happy-beats-business-moves-vol-1-by-ende-dot-app.mp3"
+        data-start="0"
+        data-duration="60"
+        data-track-index="10"
+        data-volume="0.65"
+      ></audio>
+
+      <!-- SFX Cues across the 60s edit -->
+      <audio
+        id="sfx-impact1"
+        src="assets/sfx/impact/impactSoft_medium_001.ogg"
+        data-start="0.3"
+        data-duration="0.18"
+        data-track-index="11"
+        data-volume="0.8"
+      ></audio>
+      <audio
+        id="sfx-click1"
+        src="assets/sfx/interface/click_002.ogg"
+        data-start="8.0"
+        data-duration="0.05"
+        data-track-index="12"
+        data-volume="0.75"
+      ></audio>
+      <audio
+        id="sfx-impact2"
+        src="assets/sfx/impact/impactSoft_medium_002.ogg"
+        data-start="16.0"
+        data-duration="0.14"
+        data-track-index="13"
+        data-volume="0.85"
+      ></audio>
+      <audio
+        id="sfx-click2"
+        src="assets/sfx/interface/click_003.ogg"
+        data-start="25.0"
+        data-duration="0.05"
+        data-track-index="14"
+        data-volume="0.75"
+      ></audio>
+      <audio
+        id="sfx-click3"
+        src="assets/sfx/interface/click_002.ogg"
+        data-start="35.0"
+        data-duration="0.05"
+        data-track-index="15"
+        data-volume="0.75"
+      ></audio>
+      <audio
+        id="sfx-click4"
+        src="assets/sfx/interface/click_003.ogg"
+        data-start="44.0"
+        data-duration="0.05"
+        data-track-index="16"
+        data-volume="0.75"
+      ></audio>
+      <audio
+        id="sfx-bell"
+        src="assets/sfx/impact/impactBell_heavy_000.ogg"
+        data-start="52.0"
+        data-duration="1.48"
+        data-track-index="17"
+        data-volume="0.95"
+      ></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["alfred-showcase"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

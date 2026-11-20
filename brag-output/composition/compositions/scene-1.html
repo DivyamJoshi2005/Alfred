@@ -1,0 +1,261 @@
+<template id="scene-1-template">
+  <div data-composition-id="scene-1" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: local('Space Grotesk'), local('SpaceGrotesk');
+      }
+      @font-face {
+        font-family: 'Plus Jakarta Sans';
+        src: local('Plus Jakarta Sans'), local('PlusJakartaSans');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: local('JetBrains Mono'), local('JetBrainsMono');
+      }
+
+      [data-composition-id="scene-1"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(circle at 70% 30%, #171b26 0%, #08090b 70%);
+        overflow: hidden;
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+        color: #f5f3ee;
+        box-sizing: border-box;
+      }
+
+      .s1-container {
+        width: 100%;
+        height: 100%;
+        padding: 90px 80px 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 50px;
+        box-sizing: border-box;
+      }
+
+      .s1-left {
+        flex: 1.1;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .s1-eyebrow {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        color: #ff7559;
+        text-transform: uppercase;
+      }
+
+      .s1-title {
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-size: 64px;
+        line-height: 1.08;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #f5f3ee;
+      }
+
+      .s1-title-accent {
+        color: #ff7559;
+        display: inline-block;
+      }
+
+      .s1-desc {
+        font-size: 20px;
+        line-height: 1.5;
+        color: #c5cad6;
+        max-width: 660px;
+      }
+
+      .s1-pills-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 6px;
+      }
+
+      .s1-pill {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        padding: 8px 16px;
+        background: #161922;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        color: #f5f3ee;
+      }
+
+      .s1-pill-vermilion {
+        border-color: #ff7559;
+        background: rgba(255, 117, 89, 0.15);
+        color: #ff7559;
+      }
+
+      .s1-right {
+        flex: 1.25;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .s1-dashboard-frame {
+        width: 100%;
+        background: #11141c;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+      }
+
+      .s1-window-header {
+        height: 38px;
+        background: #161924;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+      }
+
+      .s1-window-dots {
+        display: flex;
+        gap: 6px;
+      }
+
+      .s1-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.25);
+      }
+
+      .s1-window-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #c5cad6;
+        letter-spacing: 0.05em;
+      }
+
+      .s1-dashboard-img {
+        width: 100%;
+        height: 380px;
+        object-fit: cover;
+        object-position: top;
+        display: block;
+      }
+
+      .s1-metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+      }
+
+      .s1-metric-card {
+        background: #151822;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .s1-metric-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #c5cad6;
+        letter-spacing: 0.08em;
+      }
+
+      .s1-metric-value {
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-size: 26px;
+        font-weight: 700;
+        color: #f5f3ee;
+      }
+
+      .s1-metric-sub {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #34d399;
+      }
+    </style>
+
+    <div class="s1-container">
+      <div class="s1-left">
+        <div class="s1-eyebrow">SYSTEM 01 // EDITORIAL CONTROL ROOM</div>
+        <h1 class="s1-title">
+          THE AUTONOMOUS <span class="s1-title-accent">DESKTOP STUDIO</span> FOR VERTICAL VIDEO
+        </h1>
+        <p class="s1-desc">
+          High-throughput video repurposing engineered for creator workstations. Native Tauri v2 shell, local FastAPI sidecar, and zero cloud lock-in.
+        </p>
+        <div class="s1-pills-row">
+          <div class="s1-pill s1-pill-vermilion">TAURI v2 RUST SHELL</div>
+          <div class="s1-pill">REACT 19</div>
+          <div class="s1-pill">DAEMON :8741</div>
+          <div class="s1-pill" style="color: #34d399; border-color: #34d399;">100% PRIVATE</div>
+        </div>
+      </div>
+
+      <div class="s1-right">
+        <div class="s1-dashboard-frame">
+          <div class="s1-window-header">
+            <div class="s1-window-dots">
+              <div class="s1-dot"></div>
+              <div class="s1-dot"></div>
+              <div class="s1-dot"></div>
+            </div>
+            <div class="s1-window-title">ALFRED // DASHBOARD TELEMETRY</div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #34d399;">● ONLINE</div>
+          </div>
+          <img class="s1-dashboard-img" src="assets/images/dashboard_ui.png" alt="Alfred Dashboard UI" />
+        </div>
+
+        <div class="s1-metrics-grid">
+          <div class="s1-metric-card" id="s1-m1">
+            <div class="s1-metric-tag">[METRIC 01] · INGESTED</div>
+            <div class="s1-metric-value">1 MASTER</div>
+            <div class="s1-metric-sub">5 Viral Clips Rendered</div>
+          </div>
+          <div class="s1-metric-card" id="s1-m2">
+            <div class="s1-metric-tag">[METRIC 02] · ACTIVE QUEUE</div>
+            <div class="s1-metric-value" style="color: #ff7559;">STANDBY</div>
+            <div class="s1-metric-sub">Local CPU / GPU Engine</div>
+          </div>
+          <div class="s1-metric-card" id="s1-m3">
+            <div class="s1-metric-tag">[METRIC 03] · SCHEDULED</div>
+            <div class="s1-metric-value">3 QUEUED</div>
+            <div class="s1-metric-sub">YouTube / IG / X Transmissions</div>
+          </div>
+          <div class="s1-metric-card" id="s1-m4">
+            <div class="s1-metric-tag">[METRIC 04] · BROADCASTED</div>
+            <div class="s1-metric-value" style="color: #34d399;">5 REELS</div>
+            <div class="s1-metric-sub">Zero Cloud SaaS Incurred</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["scene-1"] = tl;
+
+    tl.from(".s1-eyebrow", { opacity: 0, y: -15, duration: 0.5, ease: "power2.out" }, 0.2)
+      .from(".s1-title", { opacity: 0, y: 25, duration: 0.7, ease: "power3.out" }, 0.35)
+      .from(".s1-desc", { opacity: 0, y: 15, duration: 0.6, ease: "power2.out" }, 0.6)
+      .from(".s1-pills-row .s1-pill", { opacity: 0, scale: 0.9, stagger: 0.1, duration: 0.4, ease: "back.out(1.5)" }, 0.8)
+      .from(".s1-dashboard-frame", { opacity: 0, x: 40, duration: 0.8, ease: "power3.out" }, 0.5)
+      .from(".s1-metric-card", { opacity: 0, y: 20, stagger: 0.15, duration: 0.5, ease: "power2.out" }, 1.0)
+      .to(".s1-container", { opacity: 0, scale: 0.98, duration: 0.45, ease: "power2.in" }, 7.5);
+
+    tl.seek(0);
+  </script>
+</template>

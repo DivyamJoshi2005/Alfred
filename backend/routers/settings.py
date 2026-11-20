@@ -58,32 +58,35 @@ async def update_settings(updates: dict[str, str]) -> dict[str, str]:
 async def check_models_status() -> dict[str, Any]:
     """Report status and readiness of ML models on disk."""
     return {
-        "whisper_tiny": {
-            "name": "Whisper Tiny (Audio Transcription)",
-            "ready": WHISPER_MODEL_PATH.exists() or True,  # faster-whisper can also auto-download
-            "path": str(WHISPER_MODEL_PATH),
+        "whisper_base": {
+            "name": "Whisper Base.en / Small.en (Studio Audio Transcription)",
+            "ready": True,
+            "engine": "faster-whisper CTranslate2 (int8 CPU, VAD Beam-Search)",
+            "path": "Systran/faster-whisper-base.en (CTranslate2 int8)",
         },
         "llama_1b": {
             "name": "Llama 3.2 1B (Highlight Selection & Hooks)",
             "ready": LLAMA_MODEL_PATH.exists(),
+            "engine": "llama-cpp-python (Q4_K_M GGUF)",
             "path": str(LLAMA_MODEL_PATH),
         },
         "kokoro_82m": {
             "name": "Kokoro-82M (Text-to-Speech)",
             "ready": KOKORO_MODEL_PATH.exists() and KOKORO_VOICES_PATH.exists(),
+            "engine": "ONNX Runtime (24kHz Mono)",
             "path": str(KOKORO_MODEL_PATH),
-            "fallback_available": True,
         },
         "yolov8n_face": {
             "name": "YOLOv8n-face (Smart 9:16 Cropping)",
             "ready": YOLO_MODEL_PATH.exists(),
+            "engine": "ONNX Runtime (Dynamic 640x640 Face Tracking)",
             "path": str(YOLO_MODEL_PATH),
-            "center_crop_fallback": True,
         },
         "openvoice_v2": {
             "name": "OpenVoice v2 (Voice Cloning)",
             "ready": voice_cloner.is_model_downloaded(),
-            "acoustic_profile_ready": True,
+            "engine": "OpenVoice Tone Converter Checkpoint",
+            "path": str(voice_cloner.checkpoints_dir / "converter" / "checkpoint.pth"),
         },
     }
 
@@ -97,8 +100,8 @@ async def list_voice_samples() -> list[dict[str, Any]]:
 @router.post("/voice-sample")
 async def upload_voice_sample(file: UploadFile = File(...), sample_name: str = "my_voice"):
     """Upload a ~10-second reference voice sample and generate speaker embedding."""
-    if not file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".ogg")):
-        raise HTTPException(status_code=400, detail="Only audio files (.wav, .mp3, .m4a) are supported")
+    if not file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".ogg", ".webm")):
+        raise HTTPException(status_code=400, detail="Only audio files (.wav, .mp3, .m4a, .ogg, .webm) are supported")
 
     clean_name = "".join(c for c in sample_name if c.isalnum() or c in ("-", "_")).strip() or "voice_sample"
     temp_target = VOICE_SAMPLES_DIR / f"temp_{clean_name}_{file.filename}"

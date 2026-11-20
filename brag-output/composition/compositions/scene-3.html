@@ -1,0 +1,261 @@
+<template id="scene-3-template">
+  <div data-composition-id="scene-3" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: local('Space Grotesk'), local('SpaceGrotesk');
+      }
+      @font-face {
+        font-family: 'Plus Jakarta Sans';
+        src: local('Plus Jakarta Sans'), local('PlusJakartaSans');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: local('JetBrains Mono'), local('JetBrainsMono');
+      }
+
+      [data-composition-id="scene-3"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(circle at 65% 40%, #171b28 0%, #08090b 70%);
+        overflow: hidden;
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+        color: #f5f3ee;
+        box-sizing: border-box;
+      }
+
+      .s3-container {
+        width: 100%;
+        height: 100%;
+        padding: 90px 80px 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 50px;
+        box-sizing: border-box;
+      }
+
+      .s3-left {
+        flex: 1.25;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .s3-video-frame {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+      }
+
+      .s3-video-el {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      /* Dynamic vermilion 9:16 tracking box */
+      .s3-tracking-box {
+        position: absolute;
+        top: 6%;
+        bottom: 6%;
+        left: 20%;
+        width: 28%;
+        border: 2px solid #ff7559;
+        box-shadow: 0 0 20px rgba(255, 117, 89, 0.4), inset 0 0 15px rgba(255, 117, 89, 0.2);
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 8px;
+        box-sizing: border-box;
+      }
+
+      .s3-box-badge {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: #08090b;
+        background: #ff7559;
+        padding: 2px 6px;
+        border-radius: 2px;
+        align-self: flex-start;
+      }
+
+      .s3-box-ratio {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: #ff7559;
+        align-self: flex-end;
+      }
+
+      .s3-telemetry-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 18px;
+        background: #11141c;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #c5cad6;
+      }
+
+      .s3-right {
+        flex: 1.1;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .s3-eyebrow {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        color: #ff7559;
+        text-transform: uppercase;
+      }
+
+      .s3-title {
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-size: 54px;
+        line-height: 1.1;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #f5f3ee;
+      }
+
+      .s3-title-accent {
+        color: #ff7559;
+      }
+
+      .s3-modes-column {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .s3-mode-card {
+        background: #151822;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        padding: 14px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .s3-mode-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .s3-mode-name {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 700;
+        color: #f5f3ee;
+      }
+
+      .s3-mode-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: rgba(52, 211, 153, 0.14);
+        color: #34d399;
+        border: 1px solid rgba(52, 211, 153, 0.35);
+      }
+
+      .s3-mode-desc {
+        font-size: 13px;
+        line-height: 1.45;
+        color: #c5cad6;
+      }
+    </style>
+
+    <div class="s3-container">
+      <div class="s3-left">
+        <div class="s3-video-frame">
+          <video id="s3-master-video" class="s3-video-el" src="assets/video/master_sample.mp4" data-start="0" data-duration="9" autoplay loop muted></video>
+          <div class="s3-tracking-box">
+            <span class="s3-box-badge">CV TRACK · ALAN EDELMAN</span>
+            <span class="s3-box-ratio">9:16 VERTICAL</span>
+          </div>
+        </div>
+
+        <div class="s3-telemetry-row">
+          <span>OPENCV / MEDIAPIPE FACE DETECT: LOCK 98.4%</span>
+          <span style="color: #34d399;">● 1080×1920 KINETIC CROP</span>
+        </div>
+      </div>
+
+      <div class="s3-right">
+        <div class="s3-eyebrow">VISION 03 // INTELLIGENT FRAMING MATRIX</div>
+        <h2 class="s3-title">
+          DYNAMIC SPEAKER TRACKING & <span class="s3-title-accent">CANVAS FIT</span>
+        </h2>
+
+        <div class="s3-modes-column">
+          <div class="s3-mode-card" id="s3-m1">
+            <div class="s3-mode-head">
+              <span class="s3-mode-name">📺 CANVAS PRESENTATION FIT</span>
+              <span class="s3-mode-tag">Zero Cutoff</span>
+            </div>
+            <p class="s3-mode-desc">
+              Preserves 100% of keynote presentation slides, code editor text, and formulas with dynamic smart pillarboxing.
+            </p>
+          </div>
+
+          <div class="s3-mode-card" id="s3-m2">
+            <div class="s3-mode-head">
+              <span class="s3-mode-name">📑 STACKED SPLIT SCREEN</span>
+              <span class="s3-mode-tag" style="color: #f5ba42; border-color: rgba(245, 186, 66, 0.4); background: rgba(245, 186, 66, 0.12);">Dual Monitor</span>
+            </div>
+            <p class="s3-mode-desc">
+              Presents speaker headshot framed on top and active keynote slides below for maximal educational retention.
+            </p>
+          </div>
+
+          <div class="s3-mode-card" id="s3-m3">
+            <div class="s3-mode-head">
+              <span class="s3-mode-name">👤 FACE FOCUS PAN-AND-SCAN</span>
+              <span class="s3-mode-tag" style="color: #ff7559; border-color: rgba(255, 117, 89, 0.4); background: rgba(255, 117, 89, 0.12);">Kinetic Lock</span>
+            </div>
+            <p class="s3-mode-desc">
+              Smooth camera pans continuously center the speaker as they move across stage using damped velocity vectors.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["scene-3"] = tl;
+
+    tl.from(".s3-eyebrow", { opacity: 0, y: -15, duration: 0.5, ease: "power2.out" }, 0.2)
+      .from(".s3-title", { opacity: 0, y: 25, duration: 0.7, ease: "power3.out" }, 0.35)
+      .from(".s3-video-frame", { opacity: 0, x: -30, duration: 0.8, ease: "power3.out" }, 0.4)
+      .from(".s3-tracking-box", { opacity: 0, scale: 0.8, duration: 0.6, ease: "back.out(1.5)" }, 0.7)
+      .from(".s3-telemetry-row", { opacity: 0, y: 15, duration: 0.5, ease: "power2.out" }, 0.85)
+      .from(".s3-modes-column .s3-mode-card", { opacity: 0, y: 20, stagger: 0.15, duration: 0.5, ease: "power2.out" }, 0.6)
+      .to(".s3-tracking-box", { x: 180, duration: 3.5, ease: "power1.inOut" }, 1.5)
+      .to(".s3-container", { opacity: 0, scale: 0.98, duration: 0.45, ease: "power2.in" }, 8.5);
+
+    tl.seek(0);
+  </script>
+</template>

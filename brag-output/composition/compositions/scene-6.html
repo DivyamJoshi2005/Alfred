@@ -1,0 +1,253 @@
+<template id="scene-6-template">
+  <div data-composition-id="scene-6" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: local('Space Grotesk'), local('SpaceGrotesk');
+      }
+      @font-face {
+        font-family: 'Plus Jakarta Sans';
+        src: local('Plus Jakarta Sans'), local('PlusJakartaSans');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: local('JetBrains Mono'), local('JetBrainsMono');
+      }
+
+      [data-composition-id="scene-6"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(circle at 60% 45%, #171b28 0%, #08090b 70%);
+        overflow: hidden;
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+        color: #f5f3ee;
+        box-sizing: border-box;
+      }
+
+      .s6-container {
+        width: 100%;
+        height: 100%;
+        padding: 90px 80px 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 50px;
+        box-sizing: border-box;
+      }
+
+      .s6-left {
+        flex: 1.25;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .s6-cal-window {
+        width: 100%;
+        background: #11141c;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+      }
+
+      .s6-window-header {
+        height: 38px;
+        background: #161924;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+      }
+
+      .s6-window-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #c5cad6;
+        letter-spacing: 0.05em;
+      }
+
+      .s6-cal-img {
+        width: 100%;
+        height: 390px;
+        object-fit: cover;
+        object-position: top;
+        display: block;
+      }
+
+      .s6-channels-strip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 18px;
+        background: #11141c;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+      }
+
+      .s6-channel-pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #f5f3ee;
+      }
+
+      .s6-right {
+        flex: 1.1;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .s6-eyebrow {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        color: #ff7559;
+        text-transform: uppercase;
+      }
+
+      .s6-title {
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-size: 54px;
+        line-height: 1.1;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #f5f3ee;
+      }
+
+      .s6-title-accent {
+        color: #ff7559;
+      }
+
+      .s6-cards-column {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .s6-card {
+        background: #151822;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .s6-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .s6-card-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 700;
+        color: #f5f3ee;
+      }
+
+      .s6-card-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: rgba(56, 189, 248, 0.14);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.35);
+      }
+
+      .s6-card-desc {
+        font-size: 13px;
+        line-height: 1.45;
+        color: #c5cad6;
+      }
+    </style>
+
+    <div class="s6-container">
+      <div class="s6-left">
+        <div class="s6-cal-window">
+          <div class="s6-window-header">
+            <div class="s6-window-title">TRANSMISSION CALENDAR // ORCHESTRATION</div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #34d399;">● WORKER ACTIVE</div>
+          </div>
+          <img class="s6-cal-img" src="assets/images/calendar_ui.png" alt="Transmission Calendar" />
+        </div>
+
+        <div class="s6-channels-strip">
+          <div class="s6-channel-pill">
+            <span style="color: #ff3333;">●</span> YOUTUBE SHORTS
+          </div>
+          <div class="s6-channel-pill">
+            <span style="color: #e1306c;">●</span> INSTAGRAM REELS
+          </div>
+          <div class="s6-channel-pill">
+            <span style="color: #38bdf8;">●</span> X (TWITTER)
+          </div>
+          <span style="color: #34d399;">SCHEDULER LOOP ACTIVE</span>
+        </div>
+      </div>
+
+      <div class="s6-right">
+        <div class="s6-eyebrow">DISTRIBUTION 06 // SOCIAL BROADCAST GRID</div>
+        <h2 class="s6-title">
+          AUTOMATED MULTI-PLATFORM <span class="s6-title-accent">SCHEDULING</span>
+        </h2>
+
+        <div class="s6-cards-column">
+          <div class="s6-card" id="s6-c1">
+            <div class="s6-card-head">
+              <span class="s6-card-title">CALENDAR TRANSMISSION QUEUE</span>
+              <span class="s6-card-tag">Cross-Platform</span>
+            </div>
+            <p class="s6-card-desc">
+              Schedule approved vertical cuts directly to YouTube Shorts, Instagram Reels, and X with custom titles, tags, and posting time slots.
+            </p>
+          </div>
+
+          <div class="s6-card" id="s6-c2">
+            <div class="s6-card-head">
+              <span class="s6-card-title">STEALTH BROWSER SESSIONS</span>
+              <span class="s6-card-tag" style="color: #34d399; border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.12);">Zero Cloud OAuth</span>
+            </div>
+            <p class="s6-card-desc">
+              Zero cloud SaaS middlemen. Persistent, encrypted session tokens remain securely on your workstation in <code style="color: #ff7559;">~/.alfred/chromium_profiles</code>.
+            </p>
+          </div>
+
+          <div class="s6-card" id="s6-c3">
+            <div class="s6-card-head">
+              <span class="s6-card-title">AUTONOMOUS BACKGROUND WORKER</span>
+              <span class="s6-card-tag" style="color: #f5ba42; border-color: rgba(245, 186, 66, 0.4); background: rgba(245, 186, 66, 0.12);">Local Cron</span>
+            </div>
+            <p class="s6-card-desc">
+              FastAPI background loop monitors queued transmissions and broadcasts rendered shorts autonomously.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["scene-6"] = tl;
+
+    tl.from(".s6-eyebrow", { opacity: 0, y: -15, duration: 0.5, ease: "power2.out" }, 0.2)
+      .from(".s6-title", { opacity: 0, y: 25, duration: 0.7, ease: "power3.out" }, 0.35)
+      .from(".s6-cal-window", { opacity: 0, x: -35, duration: 0.8, ease: "power3.out" }, 0.4)
+      .from(".s6-channels-strip", { opacity: 0, y: 15, duration: 0.5, ease: "power2.out" }, 0.75)
+      .from(".s6-cards-column .s6-card", { opacity: 0, y: 20, stagger: 0.15, duration: 0.5, ease: "power2.out" }, 0.6)
+      .to(".s6-container", { opacity: 0, scale: 0.98, duration: 0.45, ease: "power2.in" }, 7.5);
+
+    tl.seek(0);
+  </script>
+</template>

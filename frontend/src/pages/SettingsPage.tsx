@@ -1,0 +1,825 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { 
+  Users, 
+  Cpu, 
+  Mic, 
+  CheckCircle2, 
+  AlertCircle, 
+  Loader2, 
+  ExternalLink, 
+  Upload, 
+  RefreshCw, 
+  Check, 
+  ShieldCheck,
+  HardDrive,
+  Radio,
+  Square,
+  RotateCcw,
+  Sparkles,
+  Volume2
+} from 'lucide-react'
+import { settings as settingsApi, accounts as accountsApi } from '../lib/api'
+import type { SocialAccount, ModelStatus, VoiceSample } from '../lib/types'
+import { cn } from '../lib/utils'
+
+const REFERENCE_PROMPTS = [
+  {
+    title: "Casual Story & Hook",
+    text: "Nobody warned us that this was going to happen before we arrived. We almost turned around and went back, but sticking it out turned into the single best decision we ever made. If you ever visit this place, make sure you don't miss it.",
+  },
+  {
+    title: "Travel & Vlog",
+    text: "In this video, we're exploring the most breathtaking hidden spots in the mountains. We took an unexpected detour, and what we found completely blew us away. Watch closely because this view is unreal.",
+  },
+  {
+    title: "Insight & Tip",
+    text: "The truth is, most creators make this critical mistake when starting out. Once we flipped this one simple rule, our retention numbers immediately doubled. Here is exactly what we learned from hundreds of hours of testing.",
+  },
+]
+
+export function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<'accounts' | 'voice' | 'models' | 'general'>('accounts')
+
+  // Accounts
+  const [accountsList, setAccountsList] = useState<SocialAccount[]>([])
+  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null)
+  const [disconnectingPlatform, setDisconnectingPlatform] = useState<string | null>(null)
+
+  // Voice & Audio
+  const [voicePreset, setVoicePreset] = useState('af_heart')
+  const [voiceCloningEnabled, setVoiceCloningEnabled] = useState(false)
+  const [voiceSamples, setVoiceSamples] = useState<VoiceSample[]>([])
+  const [uploadingVoice, setUploadingVoice] = useState(false)
+  const [sampleName, setSampleName] = useState('')
+  const [selectedVoiceFile, setSelectedVoiceFile] = useState<File | null>(null)
+
+  // Live Voice Recording
+  const [voiceInputMode, setVoiceInputMode] = useState<'record' | 'upload'>('record')
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingSeconds, setRecordingSeconds] = useState(0)
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null)
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null)
+  const [selectedPromptIndex, setSelectedPromptIndex] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (recordedAudioUrl) URL.revokeObjectURL(recordedAudioUrl)
+    }
+  }, [recordedAudioUrl])
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioChunksRef.current = []
+
+      let mimeType = 'audio/webm'
+      if (typeof MediaRecorder !== 'undefined') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus'
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm'
+        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+          mimeType = 'audio/ogg;codecs=opus'
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4'
+        }
+      }
+
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      mediaRecorderRef.current = recorder
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data)
+        }
+      }
+
+      recorder.onstop = () => {
+        const blobType = recorder.mimeType || mimeType || 'audio/webm'
+        const blob = new Blob(audioChunksRef.current, { type: blobType })
+        setRecordedAudioBlob(blob)
+        if (recordedAudioUrl) {
+          URL.revokeObjectURL(recordedAudioUrl)
+        }
+        setRecordedAudioUrl(URL.createObjectURL(blob))
+        stream.getTracks().forEach(t => t.stop())
+      }
+
+      recorder.start(200)
+      setIsRecording(true)
+      setRecordingSeconds(0)
+      setRecordedAudioBlob(null)
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl)
+        setRecordedAudioUrl(null)
+      }
+
+      if (timerRef.current) clearInterval(timerRef.current)
+      timerRef.current = setInterval(() => {
+        setRecordingSeconds(s => s + 1)
+      }, 1000)
+    } catch (err: unknown) {
+      alert(err instanceof Error ? `Microphone access error: ${err.message}` : 'Please allow microphone access in your browser to record.')
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+    setIsRecording(false)
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }
+
+  const handleSaveRecordedVoice = async () => {
+    if (!recordedAudioBlob) {
+      alert('Please record your voice first before saving')
+      return
+    }
+    setUploadingVoice(true)
+    try {
+      const cleanName = sampleName.trim() || `my_voice_${Date.now()}`
+      const ext = recordedAudioBlob.type.includes('ogg') ? 'ogg' : 'webm'
+      const file = new File([recordedAudioBlob], `${cleanName}.${ext}`, {
+        type: recordedAudioBlob.type || 'audio/webm',
+      })
+      await settingsApi.uploadVoiceSample(file, cleanName)
+      const freshSamples = await settingsApi.voiceSamples()
+      setVoiceSamples(freshSamples)
+      setRecordedAudioBlob(null)
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl)
+        setRecordedAudioUrl(null)
+      }
+      setSampleName('')
+      setRecordingSeconds(0)
+      alert(`Voice profile "${cleanName}" created and acoustic profile analyzed! It is now ready for voice cloning.`)
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to save voice profile')
+    } finally {
+      setUploadingVoice(false)
+    }
+  }
+
+  // Models
+  const [modelsStatus, setModelsStatus] = useState<Record<string, ModelStatus>>({})
+  const [loadingModels, setLoadingModels] = useState(false)
+
+  // General Settings
+  const [outputDir, setOutputDir] = useState('~/Alfred/projects')
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  // Initial load
+  const loadData = useCallback(async () => {
+    try {
+      const [accs, appSettings, samples, models] = await Promise.all([
+        accountsApi.list().catch(() => [] as SocialAccount[]),
+        settingsApi.get().catch(() => ({} as Record<string, string>)),
+        settingsApi.voiceSamples().catch(() => [] as VoiceSample[]),
+        settingsApi.models().catch(() => ({} as Record<string, ModelStatus>)),
+      ])
+
+      setAccountsList(accs)
+      setVoiceSamples(samples)
+      setModelsStatus(models)
+
+      const s = appSettings as Record<string, string>
+      if (s.voice_preset) setVoicePreset(s.voice_preset)
+      if (s.voice_cloning_enabled) setVoiceCloningEnabled(s.voice_cloning_enabled === 'true')
+      if (s.output_directory) setOutputDir(s.output_directory)
+    } catch (err) {
+      console.error('Failed to load settings', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const handleConnectAccount = async (platform: string) => {
+    setConnectingPlatform(platform)
+    try {
+      alert(`A Chromium browser window will open shortly. Log in to your ${platform.toUpperCase()} account, navigate past the login screen, and Alfred will securely save your local session cookie profile.`)
+      const updated = await accountsApi.connect(platform)
+      setAccountsList(prev => [updated, ...prev.filter(a => a.platform !== platform)])
+      alert(`Connected to ${platform.toUpperCase()} successfully!`)
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : `Connection to ${platform} failed or timed out`)
+    } finally {
+      setConnectingPlatform(null)
+    }
+  }
+
+  const handleDisconnectAccount = async (platform: string) => {
+    if (!window.confirm(`Disconnect ${platform.toUpperCase()} account?`)) return
+    setDisconnectingPlatform(platform)
+    try {
+      await accountsApi.disconnect(platform, true)
+      setAccountsList(prev => prev.filter(a => a.platform !== platform))
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to disconnect account')
+    } finally {
+      setDisconnectingPlatform(null)
+    }
+  }
+
+  const handleUploadVoiceSample = async () => {
+    if (!selectedVoiceFile) {
+      alert('Please choose an audio file first')
+      return
+    }
+    setUploadingVoice(true)
+    try {
+      const cleanName = sampleName.trim() || 'my_voice'
+      await settingsApi.uploadVoiceSample(selectedVoiceFile, cleanName)
+      const freshSamples = await settingsApi.voiceSamples()
+      setVoiceSamples(freshSamples)
+      setSelectedVoiceFile(null)
+      setSampleName('')
+      alert('Voice sample uploaded and acoustic profile analyzed!')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to process voice sample')
+    } finally {
+      setUploadingVoice(false)
+    }
+  }
+
+  const handleSaveGeneralSettings = async () => {
+    setSavingSettings(true)
+    setSaveSuccess(false)
+    try {
+      await settingsApi.update({
+        voice_preset: voicePreset,
+        voice_cloning_enabled: voiceCloningEnabled ? 'true' : 'false',
+        output_directory: outputDir,
+      })
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 2500)
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to save settings')
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  const checkModels = async () => {
+    setLoadingModels(true)
+    try {
+      const m = await settingsApi.models()
+      setModelsStatus(m)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingModels(false)
+    }
+  }
+
+  const getAccount = (platform: string) => accountsList.find(a => a.platform === platform)
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto space-y-8 animate-fade-in">
+      {/* Header */}
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight text-text">Settings & System</h2>
+        <p className="text-sm text-text-secondary mt-1">
+          Manage your connected publishing platforms, local AI models, voice cloning, and storage preferences.
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-border gap-6 text-sm font-medium">
+        {[
+          { id: 'accounts', label: 'Social Accounts', icon: Users },
+          { id: 'voice', label: 'Voice & Hook Audio', icon: Mic },
+          { id: 'models', label: 'Local AI Engine', icon: Cpu },
+          { id: 'general', label: 'General & Storage', icon: HardDrive },
+        ].map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id as typeof activeTab)}
+            className={cn(
+              "flex items-center gap-2 pb-3 border-b-2 transition-all cursor-pointer",
+              activeTab === id
+                ? "border-accent text-accent font-semibold"
+                : "border-transparent text-text-secondary hover:text-text hover:border-border-strong"
+            )}
+          >
+            <Icon size={16} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab: Accounts */}
+      {activeTab === 'accounts' && (
+        <div className="space-y-6">
+          <div className="bg-stone-50/70 p-4 rounded-xl border border-border text-xs text-text-secondary flex items-start gap-3">
+            <ShieldCheck size={18} className="text-accent shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-text">Private & Offline-first Auth</p>
+              <p className="mt-0.5 leading-relaxed">
+                Alfred uses local stealth browser profiles to upload content on your behalf. Your passwords and credentials are never stored or sent to any third-party server.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              {
+                platform: 'youtube',
+                title: 'YouTube Shorts',
+                desc: 'Upload vertical shorts directly to YouTube Studio.',
+                color: 'text-red-600',
+              },
+              {
+                platform: 'instagram',
+                title: 'Instagram Reels',
+                desc: 'Post 9:16 reels to your connected Instagram profile.',
+                color: 'text-pink-600',
+              },
+              {
+                platform: 'twitter',
+                title: 'X (Twitter)',
+                desc: 'Publish video tweets with custom hooks and copy.',
+                color: 'text-sky-600',
+              },
+            ].map(({ platform, title, desc, color }) => {
+              const connectedAcc = getAccount(platform)
+              const isConnecting = connectingPlatform === platform
+              const isDisconnecting = disconnectingPlatform === platform
+
+              return (
+                <div
+                  key={platform}
+                  className="bg-surface rounded-xl border border-border p-5 shadow-xs flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className={cn("text-base font-semibold", color)}>
+                        {title}
+                      </h4>
+                      {connectedAcc ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          <CheckCircle2 size={12} />
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-xs text-text-muted bg-stone-100 px-2 py-0.5 rounded-full">
+                          Disconnected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-secondary leading-relaxed">
+                      {desc}
+                    </p>
+                    {connectedAcc && (
+                      <p className="text-xs text-text-muted pt-1">
+                        Connected: <span className="font-medium text-text">{connectedAcc.display_name || 'Browser Session'}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-border">
+                    {connectedAcc ? (
+                      <button
+                        onClick={() => handleDisconnectAccount(platform)}
+                        disabled={isDisconnecting}
+                        className="w-full py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200 disabled:opacity-50"
+                      >
+                        {isDisconnecting ? 'Disconnecting...' : 'Disconnect Account'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleConnectAccount(platform)}
+                        disabled={isConnecting}
+                        className="w-full inline-flex items-center justify-center gap-1.5 py-2 text-xs font-medium bg-stone-900 text-white hover:bg-stone-800 rounded-lg transition-colors disabled:opacity-50 shadow-xs"
+                      >
+                        {isConnecting ? (
+                          <>
+                            <Loader2 size={13} className="animate-spin" />
+                            Browser Open...
+                          </>
+                        ) : (
+                          <>
+                            <ExternalLink size={13} />
+                            Connect via Browser
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Voice & Audio */}
+      {activeTab === 'voice' && (
+        <div className="space-y-6">
+          <div className="bg-surface rounded-xl border border-border p-6 shadow-xs space-y-5">
+            <div>
+              <h3 className="text-base font-semibold text-text">Spoken Audio Presets</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Choose the default voice used by the Kokoro 82M TTS engine for spoken hooks.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { id: 'af_heart', name: 'Heart (Warm & Engaging)', desc: 'Friendly, modern narration style' },
+                { id: 'af_bella', name: 'Bella (Clear & Upbeat)', desc: 'Bright, articulate delivery' },
+                { id: 'af_nicole', name: 'Nicole (Relaxed & Natural)', desc: 'Casual conversational tone' },
+                { id: 'am_adam', name: 'Adam (Confident & Direct)', desc: 'Professional male presenter' },
+                { id: 'am_michael', name: 'Michael (Deep & Grounded)', desc: 'Authoritative podcast tone' },
+              ].map(voice => (
+                <div
+                  key={voice.id}
+                  onClick={() => setVoicePreset(voice.id)}
+                  className={cn(
+                    "p-3.5 rounded-lg border text-left cursor-pointer transition-all",
+                    voicePreset === voice.id
+                      ? "border-accent bg-accent-light/30 ring-1 ring-accent"
+                      : "border-border hover:border-stone-400 bg-white"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-text">{voice.name}</p>
+                    {voicePreset === voice.id && <Check size={16} className="text-accent" />}
+                  </div>
+                  <p className="text-xs text-text-muted mt-1">{voice.desc}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-4 border-t border-border flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-text">Enable Voice Cloning (OpenVoice v2)</p>
+                <p className="text-xs text-text-muted">Generate hooks in your own voice from an uploaded reference clip</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoiceCloningEnabled(!voiceCloningEnabled)}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                  voiceCloningEnabled ? "bg-accent" : "bg-stone-200"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                    voiceCloningEnabled ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Voice sample recording & upload */}
+          <div className="bg-surface rounded-xl border border-border p-6 shadow-xs space-y-5">
+            <div>
+              <h3 className="text-base font-semibold text-text">Your Voice Reference Samples</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Record a 10–15 second clean voice clip with the reference script below or upload an audio file to generate your sound profile for voice cloning.
+              </p>
+            </div>
+
+            {/* Mode switch */}
+            <div className="flex items-center gap-2 border-b border-border pb-3">
+              <button
+                type="button"
+                onClick={() => setVoiceInputMode('record')}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                  voiceInputMode === 'record'
+                    ? "bg-accent text-accent-text shadow-xs"
+                    : "bg-stone-100 text-text-secondary hover:text-text hover:bg-stone-200"
+                )}
+              >
+                <Radio size={13} className={voiceInputMode === 'record' ? 'animate-pulse' : ''} />
+                Record with Microphone
+              </button>
+              <button
+                type="button"
+                onClick={() => setVoiceInputMode('upload')}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                  voiceInputMode === 'upload'
+                    ? "bg-accent text-accent-text shadow-xs"
+                    : "bg-stone-100 text-text-secondary hover:text-text hover:bg-stone-200"
+                )}
+              >
+                <Upload size={13} />
+                Upload Audio File
+              </button>
+            </div>
+
+            {/* Mode: Live Recording */}
+            {voiceInputMode === 'record' && (
+              <div className="space-y-4">
+                {/* Script selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-text uppercase tracking-wider">
+                      1. Read this text aloud (10-15 seconds):
+                    </span>
+                    <div className="flex gap-1.5">
+                      {REFERENCE_PROMPTS.map((p, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSelectedPromptIndex(idx)}
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer",
+                            selectedPromptIndex === idx
+                              ? "bg-accent-light text-accent border border-accent/30 font-semibold"
+                              : "bg-stone-100 text-text-muted hover:text-text"
+                          )}
+                        >
+                          {p.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-stone-50/80 rounded-xl border border-stone-200 shadow-2xs">
+                    <p className="text-sm font-medium text-text leading-relaxed italic">
+                      "{REFERENCE_PROMPTS[selectedPromptIndex].text}"
+                    </p>
+                  </div>
+                </div>
+
+                {/* Recording interface */}
+                <div className="p-4 bg-stone-50/50 rounded-xl border border-border space-y-3">
+                  <span className="text-xs font-semibold text-text uppercase tracking-wider block">
+                    2. Record & Generate Sound Profile:
+                  </span>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    <input
+                      type="text"
+                      placeholder="Voice label (e.g. My Studio Voice)"
+                      value={sampleName}
+                      onChange={(e) => setSampleName(e.target.value)}
+                      className="text-xs px-3 py-2 border border-border rounded-lg bg-white text-text w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+
+                    {!isRecording && !recordedAudioUrl && (
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Radio size={14} className="animate-pulse" />
+                        Start Recording
+                      </button>
+                    )}
+
+                    {isRecording && (
+                      <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping" />
+                          <span>Recording: {recordingSeconds}s</span>
+                          <span className="text-[10px] text-rose-500 font-normal">
+                            (10-15s recommended)
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={stopRecording}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-stone-900 text-white hover:bg-stone-800 transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Square size={13} className="fill-white" />
+                          Stop Recording
+                        </button>
+                      </div>
+                    )}
+
+                    {recordedAudioUrl && !isRecording && (
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={startRecording}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-stone-100 text-text hover:bg-stone-200 transition-colors cursor-pointer"
+                          title="Record again"
+                        >
+                          <RotateCcw size={13} />
+                          Re-record
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSaveRecordedVoice}
+                          disabled={uploadingVoice}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                        >
+                          {uploadingVoice ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              Analyzing Profile...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={13} />
+                              Save & Create Profile
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {recordedAudioUrl && (
+                    <div className="pt-2">
+                      <p className="text-[11px] text-text-muted mb-1 flex items-center gap-1">
+                        <Volume2 size={12} className="text-accent" />
+                        Listen to your recording preview ({recordingSeconds}s):
+                      </p>
+                      <audio controls src={recordedAudioUrl} className="w-full h-8" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Mode: File Upload */}
+            {voiceInputMode === 'upload' && (
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  placeholder="Voice label (e.g. Divyam Mic 1)"
+                  value={sampleName}
+                  onChange={(e) => setSampleName(e.target.value)}
+                  className="text-xs px-3 py-2 border border-border rounded-lg bg-white text-text flex-1 focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                <input
+                  type="file"
+                  accept=".wav,.mp3,.m4a,.ogg,.webm"
+                  onChange={(e) => setSelectedVoiceFile(e.target.files?.[0] || null)}
+                  className="text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-stone-100 file:text-text hover:file:bg-stone-200 text-text-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={handleUploadVoiceSample}
+                  disabled={uploadingVoice || !selectedVoiceFile}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {uploadingVoice ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                  Upload Sample
+                </button>
+              </div>
+            )}
+
+            {voiceSamples.length > 0 && (
+              <div className="divide-y divide-border pt-2">
+                {voiceSamples.map((sample, i) => (
+                  <div key={i} className="py-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Mic size={14} className="text-accent" />
+                      <span className="font-medium text-text">{sample.name}</span>
+                    </div>
+                    {sample.has_embedding ? (
+                      <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium border border-emerald-200">
+                        Embedding Ready
+                      </span>
+                    ) : (
+                      <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
+                        Raw Audio
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Models */}
+      {activeTab === 'models' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-text">On-Device AI Models</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Alfred runs 100% locally on your hardware. All models execute offline with zero cloud tokens or external latency.
+              </p>
+            </div>
+            <button
+              onClick={checkModels}
+              disabled={loadingModels}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-stone-100 text-text hover:bg-stone-200 transition-colors cursor-pointer"
+            >
+              <RefreshCw size={13} className={loadingModels ? "animate-spin" : ""} />
+              Check Status
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.entries(modelsStatus).map(([key, model]) => (
+              <div
+                key={key}
+                className="bg-surface rounded-xl border border-border p-4 shadow-xs space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-text">{model.name}</h4>
+                  {model.ready ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      <CheckCircle2 size={12} />
+                      Ready
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      <AlertCircle size={12} />
+                      Fallback mode
+                    </span>
+                  )}
+                </div>
+
+                {model.engine && (
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary bg-stone-50 px-2.5 py-1 rounded-md border border-border/70">
+                    <Cpu size={12} className="text-accent shrink-0" />
+                    <span>Engine: {model.engine}</span>
+                  </div>
+                )}
+
+                {model.path && (
+                  <p className="text-[11px] text-text-muted truncate font-mono">
+                    Path: {model.path}
+                  </p>
+                )}
+
+                {model.ready ? (
+                  <p className="text-[11px] text-emerald-700 flex items-center gap-1 font-medium pt-0.5">
+                    <Check size={12} strokeWidth={2.5} />
+                    Active on local hardware — full neural accuracy
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-700">
+                    Using heuristic algorithm fallback until model weights are in place.
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: General */}
+      {activeTab === 'general' && (
+        <div className="space-y-6">
+          <div className="bg-surface rounded-xl border border-border p-6 shadow-xs space-y-4">
+            <div>
+              <h3 className="text-base font-semibold text-text">Storage & Export Folder</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Where generated 9:16 shorts, audio files, and transcripts will be saved.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-1">
+                Output Directory
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={outputDir}
+                  onChange={(e) => setOutputDir(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-border flex items-center justify-between">
+              {saveSuccess && (
+                <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+                  <Check size={14} />
+                  Settings saved successfully!
+                </span>
+              )}
+              <div className="ml-auto">
+                <button
+                  onClick={handleSaveGeneralSettings}
+                  disabled={savingSettings}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors shadow-xs disabled:opacity-50"
+                >
+                  {savingSettings ? <Loader2 size={13} className="animate-spin" /> : 'Save Preferences'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

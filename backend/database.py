@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS clips (
     output_path     TEXT,
     status          TEXT DEFAULT 'pending',
     rationale       TEXT,
+    visual_score    REAL DEFAULT 0.0,
+    audio_score     REAL DEFAULT 0.0,
+    hook_score      REAL DEFAULT 0.0,
+    retention_score REAL DEFAULT 0.0,
+    visual_hook_rationale TEXT,
+    storyboard_paths TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -99,6 +105,20 @@ async def init_db():
     db = await get_db()
     try:
         await db.executescript(SCHEMA_SQL)
+        # Automatic migrations for visual hook metrics
+        new_cols = [
+            ("visual_score", "REAL DEFAULT 0.0"),
+            ("audio_score", "REAL DEFAULT 0.0"),
+            ("hook_score", "REAL DEFAULT 0.0"),
+            ("retention_score", "REAL DEFAULT 0.0"),
+            ("visual_hook_rationale", "TEXT"),
+            ("storyboard_paths", "TEXT"),
+        ]
+        cursor = await db.execute("PRAGMA table_info(clips)")
+        existing_cols = {row["name"] for row in await cursor.fetchall()}
+        for col_name, col_type in new_cols:
+            if col_name not in existing_cols:
+                await db.execute(f"ALTER TABLE clips ADD COLUMN {col_name} {col_type}")
         await db.commit()
     finally:
         await db.close()

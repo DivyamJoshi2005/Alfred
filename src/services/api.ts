@@ -101,9 +101,10 @@ export const api = {
     request<{ platform: string; authenticated: boolean; error?: string }>(`/api/accounts/${platform}/status`),
 
   // Media
-  getVideoSrc: (path: string | null | undefined): string => {
+  getVideoSrc: (path: string | null | undefined, version?: number | string): string => {
     if (!path) return '';
-    return `${API_BASE}/api/media?path=${encodeURIComponent(path)}`;
+    const cacheBuster = version ? `&v=${version}` : '';
+    return `${API_BASE}/api/media?path=${encodeURIComponent(path)}${cacheBuster}`;
   },
 
   // Settings & Voice

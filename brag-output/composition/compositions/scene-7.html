@@ -1,0 +1,230 @@
+<template id="scene-7-template">
+  <div data-composition-id="scene-7" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: local('Space Grotesk'), local('SpaceGrotesk');
+      }
+      @font-face {
+        font-family: 'Plus Jakarta Sans';
+        src: local('Plus Jakarta Sans'), local('PlusJakartaSans');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: local('JetBrains Mono'), local('JetBrainsMono');
+      }
+
+      [data-composition-id="scene-7"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(circle at 50% 50%, #171a26 0%, #08090b 75%);
+        overflow: hidden;
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+        color: #f5f3ee;
+        box-sizing: border-box;
+      }
+
+      .s7-container {
+        width: 100%;
+        height: 100%;
+        padding: 80px 80px 40px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 32px;
+        box-sizing: border-box;
+      }
+
+      .s7-specs-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        width: 100%;
+        max-width: 1300px;
+      }
+
+      .s7-spec-card {
+        background: #12151e;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .s7-spec-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .s7-spec-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 700;
+        color: #f5f3ee;
+      }
+
+      .s7-spec-badge {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        color: #34d399;
+        background: rgba(52, 211, 153, 0.14);
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid rgba(52, 211, 153, 0.35);
+      }
+
+      .s7-spec-desc {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #c5cad6;
+      }
+
+      /* Hero Atelier Outro Block */
+      .s7-hero-outro {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 16px;
+      }
+
+      .s7-monogram-box {
+        width: 72px;
+        height: 72px;
+        background: #ff7559;
+        color: #08090b;
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-weight: 700;
+        font-size: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        box-shadow: 0 12px 30px rgba(255, 117, 89, 0.35);
+      }
+
+      .s7-brand-title {
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-size: 64px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.05;
+        color: #f5f3ee;
+      }
+
+      .s7-claim {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 16px;
+        letter-spacing: 0.12em;
+        color: #ff7559;
+        text-transform: uppercase;
+      }
+
+      .s7-stack-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 4px;
+      }
+
+      .s7-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        padding: 6px 14px;
+        background: #161924;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        color: #f5f3ee;
+      }
+
+      .s7-cta-button {
+        margin-top: 10px;
+        background: #ff7559;
+        color: #08090b;
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-weight: 700;
+        font-size: 16px;
+        letter-spacing: 0.04em;
+        padding: 12px 32px;
+        border-radius: 8px;
+        border: none;
+        box-shadow: 0 8px 24px rgba(255, 117, 89, 0.3);
+      }
+    </style>
+
+    <div class="s7-container">
+      <!-- 4-Card Hardware Engine Telemetry Strip -->
+      <div class="s7-specs-grid">
+        <div class="s7-spec-card" id="s7-sc1">
+          <div class="s7-spec-head">
+            <span class="s7-spec-title">faster-whisper</span>
+            <span class="s7-spec-badge">● ONLINE</span>
+          </div>
+          <span class="s7-spec-desc">CTranslate2 INT8 Quantized</span>
+        </div>
+
+        <div class="s7-spec-card" id="s7-sc2">
+          <div class="s7-spec-head">
+            <span class="s7-spec-title">Kokoro-82M</span>
+            <span class="s7-spec-badge">● ONLINE</span>
+          </div>
+          <span class="s7-spec-desc">ONNX Neural Voice Engine</span>
+        </div>
+
+        <div class="s7-spec-card" id="s7-sc3">
+          <div class="s7-spec-head">
+            <span class="s7-spec-title">OpenVoice v2</span>
+            <span class="s7-spec-badge">● ONLINE</span>
+          </div>
+          <span class="s7-spec-desc">Offline Speaker Embeddings</span>
+        </div>
+
+        <div class="s7-spec-card" id="s7-sc4">
+          <div class="s7-spec-head">
+            <span class="s7-spec-title">MediaPipe Vision</span>
+            <span class="s7-spec-badge">● ONLINE</span>
+          </div>
+          <span class="s7-spec-desc">Kinetic Pan-and-Scan Lock</span>
+        </div>
+      </div>
+
+      <!-- Hero Outro Monogram & Branding -->
+      <div class="s7-hero-outro">
+        <div class="s7-monogram-box">A</div>
+        <h1 class="s7-brand-title">ALFRED STUDIO</h1>
+        <div class="s7-claim">100% PRIVATE · 100% ON-DEVICE · ZERO CLOUD LOCK-IN</div>
+
+        <div class="s7-stack-row">
+          <div class="s7-tag">TAURI v2 RUST</div>
+          <div class="s7-tag">REACT 19</div>
+          <div class="s7-tag">PYTHON FASTAPI</div>
+          <div class="s7-tag" style="color: #34d399; border-color: rgba(52, 211, 153, 0.35);">LOCAL WORKSTATION</div>
+        </div>
+
+        <button class="s7-cta-button">
+          CLONE REPO // RUN LOCALLY
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["scene-7"] = tl;
+
+    tl.from(".s7-specs-grid .s7-spec-card", { opacity: 0, y: -20, stagger: 0.1, duration: 0.5, ease: "power2.out" }, 0.2)
+      .from(".s7-monogram-box", { opacity: 0, scale: 0.7, duration: 0.6, ease: "back.out(1.8)" }, 0.5)
+      .from(".s7-brand-title", { opacity: 0, y: 20, duration: 0.6, ease: "power3.out" }, 0.7)
+      .from(".s7-claim", { opacity: 0, duration: 0.5, ease: "power2.out" }, 0.9)
+      .from(".s7-stack-row .s7-tag", { opacity: 0, y: 15, stagger: 0.08, duration: 0.4, ease: "power2.out" }, 1.1)
+      .from(".s7-cta-button", { opacity: 0, scale: 0.9, duration: 0.5, ease: "back.out(1.5)" }, 1.3);
+
+    tl.seek(0);
+  </script>
+</template>

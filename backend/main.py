@@ -72,8 +72,8 @@ def create_app(port: int = SERVER_PORT) -> FastAPI:
     async def health_check():
         return {"status": "ok", "version": "0.1.0"}
 
-    # Media streaming for frontend video preview
-    @app.get("/api/media")
+    # Media streaming for frontend video preview (supports GET & HEAD for browser video players)
+    @app.api_route("/api/media", methods=["GET", "HEAD"])
     async def get_media(path: str):
         from fastapi.responses import FileResponse
         from fastapi import HTTPException
@@ -82,7 +82,24 @@ def create_app(port: int = SERVER_PORT) -> FastAPI:
         file_path = Path(path).resolve()
         if not file_path.exists() or not file_path.is_file():
             raise HTTPException(status_code=404, detail="Media file not found")
-        return FileResponse(str(file_path))
+
+        # Security: restrict to media file extensions (video, audio, and storyboard frames)
+        allowed_extensions = {
+            ".mp4", ".mov", ".avi", ".mkv", ".webm",
+            ".wav", ".mp3", ".m4a",
+            ".jpg", ".jpeg", ".png", ".webp"
+        }
+        if file_path.suffix.lower() not in allowed_extensions:
+            raise HTTPException(status_code=403, detail="File type not permitted for media streaming")
+
+        return FileResponse(
+            str(file_path),
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     # Serve built frontend UI if available
     from fastapi.staticfiles import StaticFiles

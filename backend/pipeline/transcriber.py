@@ -86,7 +86,13 @@ async def _run_whisper_onnx(audio_path: Path, job_id: str) -> dict[str, Any]:
     try:
         from faster_whisper import WhisperModel
 
-        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        # Prefer small.en for studio accuracy if cached locally, fallback to base.en
+        try:
+            model = WhisperModel("small.en", device="cpu", compute_type="int8", local_files_only=True)
+            print("[Transcriber] Using faster-whisper small.en (high-accuracy)")
+        except Exception:
+            model = WhisperModel("base.en", device="cpu", compute_type="int8")
+            print("[Transcriber] Using faster-whisper base.en (studio accuracy)")
 
         segments_list = []
         words_list = []
@@ -94,8 +100,11 @@ async def _run_whisper_onnx(audio_path: Path, job_id: str) -> dict[str, Any]:
 
         segments_iter, info = model.transcribe(
             str(audio_path),
-            beam_size=1,
+            beam_size=5,
             language="en",
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+            condition_on_previous_text=False,
             word_timestamps=True,
         )
 

@@ -67,7 +67,7 @@ MAX_UPLOAD_RETRIES = 3
 # ── Video Config ────────────────────────────────────────────
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 OUTPUT_VIDEO_CODEC = "libx264"
-OUTPUT_VIDEO_PRESET = "medium"
+OUTPUT_VIDEO_PRESET = "veryfast"
 OUTPUT_VIDEO_CRF = "23"
 OUTPUT_AUDIO_CODEC = "aac"
 OUTPUT_AUDIO_BITRATE = "128k"

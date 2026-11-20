@@ -1,0 +1,340 @@
+<template id="scene-4-template">
+  <div data-composition-id="scene-4" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: local('Space Grotesk'), local('SpaceGrotesk');
+      }
+      @font-face {
+        font-family: 'Plus Jakarta Sans';
+        src: local('Plus Jakarta Sans'), local('PlusJakartaSans');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: local('JetBrains Mono'), local('JetBrainsMono');
+      }
+
+      [data-composition-id="scene-4"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(circle at 50% 50%, #161926 0%, #08090b 70%);
+        overflow: hidden;
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+        color: #f5f3ee;
+        box-sizing: border-box;
+      }
+
+      .s4-container {
+        width: 100%;
+        height: 100%;
+        padding: 80px 80px 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        box-sizing: border-box;
+      }
+
+      .s4-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+
+      .s4-eyebrow {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        color: #ff7559;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .s4-title {
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-size: 46px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+      }
+
+      .s4-title-accent {
+        color: #ff7559;
+      }
+
+      .s4-clip-nav {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #11141c;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+      }
+
+      .s4-clip-btn {
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: #181c26;
+        color: #f5f3ee;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+      }
+
+      .s4-clip-btn.active {
+        background: #ff7559;
+        color: #08090b;
+        font-weight: 700;
+        border-color: #ff7559;
+      }
+
+      /* Dual Monitor Suite */
+      .s4-dual-grid {
+        display: grid;
+        grid-template-columns: 1.35fr 0.8fr;
+        gap: 24px;
+        align-items: center;
+      }
+
+      .s4-master-card {
+        background: #11141c;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+      }
+
+      .s4-card-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #c5cad6;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        padding-bottom: 8px;
+      }
+
+      .s4-master-video-box {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .s4-master-video-box video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .s4-reel-card {
+        background: #11141c;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+      }
+
+      /* Phone Frame Container */
+      .s4-phone-shell {
+        width: 210px;
+        height: 380px;
+        background: #050608;
+        border: 3px solid #323846;
+        border-radius: 28px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.8);
+      }
+
+      .s4-phone-notch {
+        position: absolute;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 12px;
+        background: #323846;
+        border-radius: 6px;
+        z-index: 10;
+      }
+
+      .s4-phone-screen {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      /* Hardware NLE Jog Deck */
+      .s4-jog-deck {
+        background: #151822;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 10px;
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      .s4-jog-cluster {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .s4-jog-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 700;
+        color: #ff7559;
+        margin-right: 4px;
+      }
+
+      .s4-jog-btn {
+        padding: 6px 12px;
+        background: #1c202d;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 4px;
+        color: #f5f3ee;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+      }
+
+      .s4-jog-val {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 700;
+        color: #f5ba42;
+        background: #0d1017;
+        padding: 6px 14px;
+        border-radius: 4px;
+        border: 1px solid rgba(245, 186, 66, 0.35);
+      }
+
+      .s4-action-btn {
+        background: #ff7559;
+        color: #08090b;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 8px 18px;
+        border-radius: 6px;
+        border: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+    </style>
+
+    <div class="s4-container">
+      <div class="s4-header-row">
+        <div>
+          <div class="s4-eyebrow">EDITORIAL 04 // REVIEW SUITE & NLE JOG DECK</div>
+          <h2 class="s4-title">
+            SIDE-BY-SIDE DUAL VIEWPORT & <span class="s4-title-accent">SUB-FRAME TRIMMING</span>
+          </h2>
+        </div>
+
+        <div class="s4-clip-nav">
+          <button class="s4-clip-btn active">CLIP [01] ✓</button>
+          <button class="s4-clip-btn">CLIP [02]</button>
+          <button class="s4-clip-btn">CLIP [03]</button>
+          <span style="color: #c5cad6; margin-left: 6px;">[1 / 5 CUTS]</span>
+        </div>
+      </div>
+
+      <div class="s4-dual-grid">
+        <!-- Left: 16:9 Contextual Master -->
+        <div class="s4-master-card">
+          <div class="s4-card-bar">
+            <span style="font-weight: 700; color: #ff7559;">MASTER FOOTAGE (16:9 CONTEXT)</span>
+            <span>TIMECODE: 08:01.96 → 09:01.62</span>
+          </div>
+          <div class="s4-master-video-box">
+            <video id="s4-master-video" src="assets/video/master_sample.mp4" data-start="0" data-duration="10" autoplay loop muted></video>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #c5cad6;">
+            <span>START: 481.96s</span>
+            <span>DURATION: 59.7 SECONDS</span>
+            <span>END: 541.62s</span>
+          </div>
+        </div>
+
+        <!-- Right: 9:16 Repurposed Reel in Phone Shell -->
+        <div class="s4-reel-card">
+          <div class="s4-card-bar" style="width: 100%;">
+            <span style="font-weight: 700; color: #34d399;">9:16 REPURPOSED REEL</span>
+            <span style="color: #34d399;">● APPROVED</span>
+          </div>
+          <div class="s4-phone-shell">
+            <div class="s4-phone-notch"></div>
+            <video id="s4-reel-video" class="s4-phone-screen" src="assets/video/reel_sample.mp4" data-start="0" data-duration="10" autoplay loop muted></video>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #c5cad6;">
+            1080×1920 · AUDIO HOOK DUCKED
+          </span>
+        </div>
+      </div>
+
+      <!-- Hardware NLE Jog Deck -->
+      <div class="s4-jog-deck">
+        <div class="s4-jog-cluster">
+          <span class="s4-jog-tag">IN-POINT</span>
+          <button class="s4-jog-btn">-5s</button>
+          <button class="s4-jog-btn">-1s</button>
+          <span class="s4-jog-val">481.9s</span>
+          <button class="s4-jog-btn">+1s</button>
+          <button class="s4-jog-btn">+5s</button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #34d399;">
+            DURATION: 59.7s
+          </span>
+          <button class="s4-action-btn">
+            ✂ APPLY & RE-RENDER CUT
+          </button>
+        </div>
+
+        <div class="s4-jog-cluster">
+          <span class="s4-jog-tag" style="color: #38bdf8;">OUT-POINT</span>
+          <button class="s4-jog-btn">-5s</button>
+          <button class="s4-jog-btn">-1s</button>
+          <span class="s4-jog-val" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35);">541.6s</span>
+          <button class="s4-jog-btn">+1s</button>
+          <button class="s4-jog-btn">+5s</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["scene-4"] = tl;
+
+    tl.from(".s4-eyebrow", { opacity: 0, y: -15, duration: 0.5, ease: "power2.out" }, 0.2)
+      .from(".s4-title", { opacity: 0, y: 25, duration: 0.7, ease: "power3.out" }, 0.35)
+      .from(".s4-clip-nav", { opacity: 0, x: 20, duration: 0.5, ease: "power2.out" }, 0.5)
+      .from(".s4-master-card", { opacity: 0, x: -30, duration: 0.8, ease: "power3.out" }, 0.4)
+      .from(".s4-reel-card", { opacity: 0, x: 30, duration: 0.8, ease: "power3.out" }, 0.5)
+      .from(".s4-jog-deck", { opacity: 0, y: 20, duration: 0.6, ease: "back.out(1.4)" }, 0.75)
+      .to(".s4-container", { opacity: 0, scale: 0.98, duration: 0.45, ease: "power2.in" }, 9.5);
+
+    tl.seek(0);
+  </script>
+</template>

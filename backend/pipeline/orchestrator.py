@@ -27,6 +27,11 @@ async def run_pipeline(job_id: str):
         clips_dir = project_dir / "clips"
         clips_dir.mkdir(parents=True, exist_ok=True)
 
+        # Clean up existing clips/transcripts if re-running
+        await db.execute("DELETE FROM clips WHERE job_id = ?", (job_id,))
+        await db.execute("DELETE FROM transcripts WHERE job_id = ?", (job_id,))
+        await db.commit()
+
         # Update status to processing
         await db.execute(
             "UPDATE jobs SET status = 'transcribing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -58,17 +63,21 @@ async def run_pipeline(job_id: str):
         )
         await db.commit()
 
-        # ── Stage 2: Viral Segment Identification ──
+        # ── Stage 2: Multimodal Visual & Audio Hook Identification ──
         await db.execute(
             "UPDATE jobs SET status = 'analyzing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (job_id,),
         )
         await db.commit()
-        await manager.send_progress(job_id, "analyzing", 0, "Identifying viral segments...")
+        await manager.send_progress(job_id, "analyzing", 0, "Analyzing visual hooks, motion & audio dynamics...")
 
-        from pipeline.analyzer import identify_segments
-        segments = await identify_segments(
+        audio_path = project_dir / "audio.wav"
+        from pipeline.multimodal_analyzer import analyze_multimodal_hooks
+        segments = await analyze_multimodal_hooks(
+            video_path=video_path,
+            audio_path=audio_path,
             transcript_data=transcript_data,
+            clips_dir=clips_dir,
             job_id=job_id,
         )
 
@@ -81,17 +90,25 @@ async def run_pipeline(job_id: str):
             job_id=job_id,
         )
 
-        # Save clips to DB
+        # Save clips to DB with multimodal scores & storyboard proofs
         for i, seg in enumerate(segments_with_hooks):
             clip_id = str(uuid.uuid4())
             duration = seg["end_time"] - seg["start_time"]
             await db.execute(
                 """INSERT INTO clips (id, job_id, rank, start_time, end_time, duration,
-                   transcript_text, hook_text, status, rationale)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+                   transcript_text, hook_text, status, rationale,
+                   visual_score, audio_score, hook_score, retention_score,
+                   visual_hook_rationale, storyboard_paths)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
                 (clip_id, job_id, i + 1, seg["start_time"], seg["end_time"],
                  duration, seg["transcript_text"], seg.get("hook_text"),
-                 seg.get("rationale")),
+                 seg.get("rationale"),
+                 seg.get("visual_score", 0.0),
+                 seg.get("audio_score", 0.0),
+                 seg.get("hook_score", 0.0),
+                 seg.get("retention_score", 0.0),
+                 seg.get("visual_hook_rationale"),
+                 seg.get("storyboard_paths")),
             )
             seg["clip_id"] = clip_id
             seg["rank"] = i + 1

@@ -1,0 +1,246 @@
+<template id="scene-2-template">
+  <div data-composition-id="scene-2" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: 'Space Grotesk';
+        src: local('Space Grotesk'), local('SpaceGrotesk');
+      }
+      @font-face {
+        font-family: 'Plus Jakarta Sans';
+        src: local('Plus Jakarta Sans'), local('PlusJakartaSans');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        src: local('JetBrains Mono'), local('JetBrainsMono');
+      }
+
+      [data-composition-id="scene-2"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(circle at 35% 45%, #151824 0%, #08090b 70%);
+        overflow: hidden;
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+        color: #f5f3ee;
+        box-sizing: border-box;
+      }
+
+      .s2-container {
+        width: 100%;
+        height: 100%;
+        padding: 90px 80px 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 50px;
+        box-sizing: border-box;
+      }
+
+      .s2-left {
+        flex: 1.25;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .s2-process-window {
+        width: 100%;
+        background: #11141c;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+      }
+
+      .s2-window-header {
+        height: 38px;
+        background: #161924;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+      }
+
+      .s2-window-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #c5cad6;
+        letter-spacing: 0.05em;
+      }
+
+      .s2-process-img {
+        width: 100%;
+        height: 400px;
+        object-fit: cover;
+        object-position: top;
+        display: block;
+      }
+
+      .s2-terminal-strip {
+        background: #0d1017;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        padding: 14px 18px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: #34d399;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .s2-right {
+        flex: 1.1;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .s2-eyebrow {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        color: #ff7559;
+        text-transform: uppercase;
+      }
+
+      .s2-title {
+        font-family: 'Space Grotesk', -apple-system, sans-serif;
+        font-size: 54px;
+        line-height: 1.1;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #f5f3ee;
+      }
+
+      .s2-title-accent {
+        color: #ff7559;
+      }
+
+      .s2-cards-column {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 6px;
+      }
+
+      .s2-card {
+        background: #151822;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .s2-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .s2-card-title {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: #f5f3ee;
+      }
+
+      .s2-card-badge {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        background: rgba(255, 117, 89, 0.15);
+        color: #ff7559;
+        border: 1px solid rgba(255, 117, 89, 0.4);
+      }
+
+      .s2-card-desc {
+        font-size: 14px;
+        line-height: 1.45;
+        color: #c5cad6;
+      }
+
+      .s2-quote-box {
+        background: #11141c;
+        border-left: 3px solid #ff7559;
+        padding: 10px 14px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: #f5f3ee;
+        font-style: italic;
+      }
+    </style>
+
+    <div class="s2-container">
+      <div class="s2-left">
+        <div class="s2-process-window">
+          <div class="s2-window-header">
+            <div class="s2-window-title">ALFRED // INGEST BAY & TRANSCRIPTION RUNTIME</div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #ff7559;">● TRANSCRIBING INT8</div>
+          </div>
+          <img class="s2-process-img" src="assets/images/process_ui.png" alt="Ingest Bay Telemetry" />
+        </div>
+
+        <div class="s2-terminal-strip">
+          <span>[DAEMON :8741] faster-whisper INT8 complete: 541.6s @ 3.3 words/sec</span>
+          <span style="color: #f5ba42;">VIRAL SCORE: 9.0/10</span>
+        </div>
+      </div>
+
+      <div class="s2-right">
+        <div class="s2-eyebrow">PIPELINE 02 // TRANSCRIPTION & HOOK INTELLIGENCE</div>
+        <h2 class="s2-title">
+          WHISPER INT8 & <span class="s2-title-accent">VIRAL HOOK</span> DETECTION
+        </h2>
+
+        <div class="s2-cards-column">
+          <div class="s2-card" id="s2-c1">
+            <div class="s2-card-head">
+              <span class="s2-card-title">WORD-LEVEL TIMESTAMPS</span>
+              <span class="s2-card-badge">CTranslate2 INT8</span>
+            </div>
+            <p class="s2-card-desc">
+              Quantized Whisper INT8 model executes 4× faster than real-time on local CPU/GPU, capturing exact microsecond word boundaries.
+            </p>
+          </div>
+
+          <div class="s2-card" id="s2-c2">
+            <div class="s2-card-head">
+              <span class="s2-card-title">ACOUSTIC & SEMANTIC RANKING</span>
+              <span class="s2-card-badge" style="color: #34d399; border-color: #34d399; background: rgba(52, 211, 153, 0.12);">NumPy Heuristic</span>
+            </div>
+            <p class="s2-card-desc">
+              Scores speech velocity, tonal inflection, question density, and topic transitions to extract high-retention segments autonomously.
+            </p>
+          </div>
+
+          <div class="s2-quote-box">
+            "So the code is really not the math, is it? But with Julia, we tell people the code IS the math."
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["scene-2"] = tl;
+
+    tl.from(".s2-eyebrow", { opacity: 0, y: -15, duration: 0.5, ease: "power2.out" }, 0.2)
+      .from(".s2-title", { opacity: 0, y: 25, duration: 0.7, ease: "power3.out" }, 0.35)
+      .from(".s2-process-window", { opacity: 0, x: -35, duration: 0.8, ease: "power3.out" }, 0.4)
+      .from(".s2-terminal-strip", { opacity: 0, y: 20, duration: 0.5, ease: "power2.out" }, 0.7)
+      .from(".s2-cards-column .s2-card", { opacity: 0, y: 20, stagger: 0.15, duration: 0.5, ease: "power2.out" }, 0.6)
+      .from(".s2-quote-box", { opacity: 0, scale: 0.95, duration: 0.5, ease: "back.out(1.5)" }, 0.9)
+      .to(".s2-container", { opacity: 0, scale: 0.98, duration: 0.45, ease: "power2.in" }, 7.5);
+
+    tl.seek(0);
+  </script>
+</template>

@@ -123,9 +123,10 @@ class KokoroTTS:
             voices_path=str(self.voices_path),
         )
 
-    def synthesize(self, text: str, output_path: str, voice_preset: str = "default", speed: float = 1.0):
+    def synthesize(self, text: str, output_path: str | Path, voice_preset: str = "default", voice: str | None = None, speed: float = 1.0):
         """Synthesize text into a 24kHz normalized WAV file."""
-        voice_id = VOICE_PRESET_MAP.get(voice_preset.lower(), "af_bella")
+        chosen_voice = voice or voice_preset
+        voice_id = VOICE_PRESET_MAP.get(chosen_voice.lower(), chosen_voice if chosen_voice.startswith(("af_", "am_", "bf_", "bm_")) else "af_bella")
         available = self.engine.get_voices()
         if voice_id not in available:
             voice_id = available[0] if available else "af_bella"
@@ -137,7 +138,7 @@ class KokoroTTS:
         )
 
         audio_norm = np.clip(audio_samples, -1.0, 1.0)
-        sf.write(output_path, audio_norm, sample_rate, subtype="PCM_16")
+        sf.write(str(output_path), audio_norm, sample_rate, subtype="PCM_16")
 
 
 class FallbackTTS:
@@ -161,16 +162,16 @@ class FallbackTTS:
                 except Exception:
                     pass
 
-    def synthesize(self, text: str, output_path: str, voice_preset: str = "default"):
+    def synthesize(self, text: str, output_path: str | Path, voice_preset: str = "default", voice: str | None = None):
         """Synthesize speech using available fallback."""
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         if self.method == "pyttsx3":
-            self.engine.save_to_file(text, output_path)
+            self.engine.save_to_file(text, str(output_path))
             self.engine.runAndWait()
         elif self.method in {"espeak", "espeak-ng"}:
             subprocess.run(
-                [self.method, "-w", output_path, "-s", "150", text],
+                [self.method, "-w", str(output_path), "-s", "150", text],
                 check=True,
                 capture_output=True,
             )
@@ -185,9 +186,18 @@ class FallbackTTS:
                 "-i", f"sine=frequency=220:duration={duration}",
                 "-ar", str(TTS_SAMPLE_RATE),
                 "-ac", "1",
-                output_path,
+                str(output_path),
             ]
             subprocess.run(cmd, check=True, capture_output=True)
+
+
+def get_tts_engine():
+    """Load Kokoro TTS if available, else graceful fallback."""
+    try:
+        return _load_kokoro_tts()
+    except Exception as e:
+        print(f"[TTS] Kokoro unavailable ({e}), using fallback TTS")
+        return _load_fallback_tts()
 
 
 def _load_kokoro_tts():
