@@ -11,6 +11,7 @@ Alfred transforms long-form horizontal videos (keynotes, tech talks, podcasts, e
 - [Overview & Architecture](#overview-architecture)
 - [Local AI Model Fleet](#local-ai-model-fleet)
 - [Core Pipeline Modules](#core-pipeline-modules)
+  - [6-Stage AI Extraction Pipeline Flow](#6-stage-ai-extraction-pipeline-flow)
   - [1. Demuxing & Transcription (`transcriber.py`)](#1-demuxing-transcription-transcriberpy)
   - [2. Multimodal Hook & Viral Scoring (`multimodal_analyzer.py`)](#2-multimodal-hook-viral-scoring-multimodalanalyzerpy)
   - [3. Hook & Headline Generation (`hook_generator.py`)](#3-hook-headline-generation-hookgeneratorpy)
@@ -20,10 +21,13 @@ Alfred transforms long-form horizontal videos (keynotes, tech talks, podcasts, e
   - [7. Pipeline Orchestration (`orchestrator.py`)](#7-pipeline-orchestration-orchestratorpy)
 - [Stealth Social Distribution & Playwright Automation](#stealth-social-distribution-playwright-automation)
   - [Instant "Publish Now" vs Scheduled Queue](#instant-publish-now-vs-scheduled-queue)
+  - [Distribution & Retry State Machine](#distribution-retry-state-machine)
   - [Anti-Bot Fingerprint Hardening & Stealth Profiles](#anti-bot-fingerprint-hardening-stealth-profiles)
   - [Self-Healing Browser Setup & Linux Wayland Support](#self-healing-browser-setup-linux-wayland-support)
   - [Queue Management & Failure Recovery](#queue-management-failure-recovery)
 - [Database Architecture & WAL Mode](#database-architecture-wal-mode)
+  - [Entity-Relationship Diagram](#entity-relationship-diagram)
+  - [Table Schemas](#table-schemas)
 - [Complete REST & WebSocket API Surface](#complete-rest-websocket-api-surface)
 - [Backend Directory Layout](#backend-directory-layout)
 - [Local Development & Setup](#local-development-setup)
@@ -35,23 +39,50 @@ Alfred transforms long-form horizontal videos (keynotes, tech talks, podcasts, e
 
 The backend daemon is built around an asynchronous, non-blocking state machine running on **FastAPI**, **uvicorn**, and **asyncio**. It exposes both REST endpoints and a real-time WebSocket telemetry gateway (`/ws`), while coordinating local neural network inference and FFmpeg filtergraphs in background worker pools.
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              FASTAPI ASYNC BACKEND DAEMON                              │
-│                                                                                        │
-│  [HTTP / REST GATEWAY]       [WEBSOCKET GATEWAY]       [BACKGROUND ENGINE]             │
-│  POST /api/jobs/upload  ──►  ws://localhost:8741/ws ──► Pipeline Orchestrator          │
-│  GET  /api/clips/job/{id}◄── Broadcast Stage Progress   (Async Worker Pool)            │
-│  POST /api/clips/rerender    (0% → 100% telemetry)     │                               │
-│  POST /api/schedule/publish-now                        ▼                               │
-│                                                        [LOCAL AI ENGINE]               │
-│  [PERSISTENCE LAYER]                                   1. FFmpeg Audio Demux (16kHz)   │
-│  SQLite DB (~/.alfred/db/alfred.db)                    2. faster-whisper + Silero VAD  │
-│  - jobs & transcripts tables                           3. Multimodal Energy Analyzer   │
-│  - clips (metrics, framing, audio mode, storyboards)   4. Llama 3.2 1B Hook Writer     │
-│  - scheduled_posts (status, attempts, last_error)      5. Kokoro-82M ONNX + Voice Clone│
-│  - social_accounts (persistent Chromium sessions)      6. FFmpeg 9 Filtergraph Muxer   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Inbound ["Inbound Gateway (:8741)"]
+        HTTP["FastAPI REST Endpoints\n(/api/jobs, /api/clips, /api/schedule, /api/accounts)"]
+        WS["WebSocket Telemetry Gateway\n(ws://127.0.0.1:8741/ws)"]
+    end
+
+    subgraph Workers ["Async Task Workers"]
+        Orchestrator["Pipeline Orchestrator\n(6-Stage Automated AI Extraction)"]
+        ReRenderer["Fast Re-Render Engine\n(Targeted FFmpeg seek slices in ~15s)"]
+        Dispatcher["Scheduler Heartbeat Worker\n(Polls due queue every 30-60s)"]
+    end
+
+    subgraph AI_Engine ["Local AI Processing Fleet"]
+        Demux["Audio Demuxer (16kHz Mono WAV)"]
+        Whisper["faster-whisper (CTranslate2 INT8 + Silero VAD)"]
+        Analyzer["Multimodal Analyzer (Optical Flow + Audio RMS)"]
+        Llama["Llama 3.2 1B Instruct (GGUF Q4_K_M)"]
+        Kokoro["Kokoro-82M ONNX + OpenVoice v2"]
+        Assembler["FFmpeg 9 Filtergraph Muxer"]
+    end
+
+    subgraph Storage ["SQLite Persistence (WAL Mode)"]
+        T_Jobs[("jobs & transcripts")]
+        T_Clips[("clips (scores, timecodes, modes, storyboards)")]
+        T_Schedule[("scheduled_posts (ISO 8601 UTC, status, attempts)")]
+        T_Accounts[("social_accounts (persistent Chromium profiles)")]
+    end
+
+    subgraph Outbound ["Stealth Distribution Engine"]
+        Playwright["Stealth Playwright Automation\n(Self-healing Chromium engine)"]
+        Social["YouTube Shorts / IG Reels / X"]
+    end
+
+    HTTP -->|Submit Video| Orchestrator
+    HTTP -->|Fine-Tune Clip| ReRenderer
+    HTTP -->|Schedule / Publish Now| T_Schedule
+    Orchestrator --> Demux --> Whisper --> Analyzer --> Llama --> Kokoro --> Assembler
+    Assembler --> T_Clips
+    ReRenderer --> Assembler
+    Orchestrator -.->|Progress Events 0-100%| WS
+    Dispatcher -->|Check due scheduled_at <= now| T_Schedule
+    Dispatcher -->|Launch Session| Playwright
+    Playwright --> Social
 ```
 
 ---
@@ -73,6 +104,55 @@ All 5 local AI models operate completely offline without cloud API keys:
 ---
 
 ## ⚙️ Core Pipeline Modules
+
+### 6-Stage AI Extraction Pipeline Flow
+
+```mermaid
+flowchart TD
+    VideoInput["Raw 16:9 Master Video (.mp4, .mov, .mkv)"] --> S1
+    
+    subgraph Stage1 ["Stage 1: Audio Demuxing"]
+        S1["FFmpeg Stream Demux\n(-vn -ac 1 -ar 16000)\nOutput: 16kHz Mono WAV"]
+    end
+
+    subgraph Stage2 ["Stage 2: Speech-to-Text"]
+        S2["faster-whisper (CTranslate2 INT8)\nSilero VAD (Noise/Music Filter)\n5-Path Beam Search\nOutput: Word-level timestamps"]
+    end
+
+    subgraph Stage3 ["Stage 3: Multimodal Hook & Viral Scoring"]
+        S3A["Optical Flow Motion Energy (2 fps)"]
+        S3B["Dynamic Audio RMS Spikes (Laughter, Swells)"]
+        S3C["Scene-Cut Boundary Anchoring"]
+        S3D["4-Frame Storyboards (+0s, +1s, +2s, +3s)"]
+        S3E["Calibrated Retention Index (88%-96%)"]
+        S3A & S3B & S3C --> S3E
+    end
+
+    subgraph Stage4 ["Stage 4: Attention Hook Synthesis"]
+        S4["Llama 3.2 1B Instruct (GGUF)\nSpoken Hook + Upper 22% Safe Headline"]
+    end
+
+    subgraph Stage5 ["Stage 5: Voice Synthesis & Cloning"]
+        S5A["Kokoro-82M ONNX TTS (24kHz)"]
+        S5B["OpenVoice v2 Tone Converter (Acoustic Cloner)"]
+        S5A --> S5B
+    end
+
+    subgraph Stage6 ["Stage 6: Multi-Framing & FFmpeg Assembly"]
+        S6A["Framing: Canvas Fit / Stacked Split / Face Focus"]
+        S6B["Audio: Original / Intro Hook / Custom Voiceover"]
+        S6C["Sanitized Drawtext Headline Badge"]
+        S6A & S6B & S6C --> S6Out["Final 1080x1920 MP4 Cutdowns"]
+    end
+
+    S1 --> S2 --> S3A
+    S2 --> S4
+    S3E --> S4
+    S4 --> S5A
+    S5B --> S6B
+    S3D --> S6A
+    S6Out --> ClipsDB[("clips table in SQLite")]
+```
 
 ### 1. Demuxing & Transcription (`transcriber.py`)
 - **Direct Stream Extraction**: Extracts master audio as 16kHz mono WAV (`-vn -ac 1 -ar 16000`) in < 1 second.
@@ -129,11 +209,42 @@ Alfred includes an offline-first social distribution system that bypasses offici
 ### Instant "Publish Now" vs Scheduled Queue
 - **⚡ Instant "Publish Now" (`POST /api/schedule/publish-now`)**:
   - Automatically marks the clip as approved if needed.
-  - Inserts a scheduled post with `scheduled_at = CURRENT_TIMESTAMP`.
+  - Inserts a scheduled post with `scheduled_at = datetime.now(timezone.utc).isoformat()`.
   - Immediately dispatches a background upload task without waiting for the scheduler polling cycle.
 - **📅 Scheduled Queue (`POST /api/schedule`)**:
-  - Schedules a post for a specific future timestamp.
+  - Schedules a post for a specific future ISO 8601 UTC timestamp.
   - The background scheduler (`scheduler/worker.py`) polls every 30–60 seconds and triggers due posts.
+
+### Distribution & Retry State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Scheduled: Schedule for Later (ISO 8601 UTC)
+    [*] --> Publishing: Publish Now (Instant Upload)
+
+    Scheduled --> DueCheck: Scheduler Loop (30-60s heartbeat)
+    DueCheck --> Publishing: datetime(scheduled_at) <= datetime(now)
+
+    Publishing --> LaunchBrowser: Launch Stealth Playwright Context
+    LaunchBrowser --> VerifySession: Check Stored Cookie Auth
+
+    VerifySession --> PerformUpload: Authenticated
+    VerifySession --> SessionExpired: Session Expired / Not Logged In
+
+    PerformUpload --> Published: Upload Completed
+    PerformUpload --> UploadError: Browser / DOM Error
+    SessionExpired --> UploadError: Needs Authentication
+
+    UploadError --> AutoRetry: attempts < 3
+    AutoRetry --> Publishing: Exponential Backoff (30s)
+
+    UploadError --> Failed: attempts >= 3
+    Failed --> Scheduled: 1-Click "Retry Upload"
+    Failed --> Scheduled: Bulk "Retry All Failed"
+    Failed --> [*]: "Clear Failed" / Delete Post
+
+    Published --> [*]
+```
 
 ### Anti-Bot Fingerprint Hardening & Stealth Profiles
 - **Persistent Browser Profiles**: Profiles and cookies are stored in `~/.alfred/chromium_profiles/{platform}`.
@@ -159,10 +270,91 @@ Alfred includes an offline-first social distribution system that bypasses offici
 
 Alfred uses an embedded SQLite database with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) located at `~/.alfred/db/alfred.db`:
 
+### Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+    JOBS ||--o{ TRANSCRIPTS : "contains"
+    JOBS ||--o{ CLIPS : "generates"
+    CLIPS ||--o{ SCHEDULED_POSTS : "publishes"
+    SOCIAL_ACCOUNTS ||--o{ SCHEDULED_POSTS : "dispatches_to"
+
+    JOBS {
+        string id PK
+        string video_path
+        string video_name
+        string status
+        datetime created_at
+        datetime updated_at
+        string error_msg
+    }
+
+    TRANSCRIPTS {
+        string id PK
+        string job_id FK
+        string full_text
+        string segments
+        string words
+        datetime created_at
+    }
+
+    CLIPS {
+        string id PK
+        string job_id FK
+        int rank
+        float start_time
+        float end_time
+        float duration
+        string transcript_text
+        string hook_text
+        string hook_audio_path
+        string output_path
+        string status
+        float visual_score
+        float audio_score
+        float hook_score
+        float retention_score
+        string storyboard_paths
+        string audio_mode
+        float hook_offset_sec
+    }
+
+    SCHEDULED_POSTS {
+        string id PK
+        string clip_id FK
+        string platform
+        datetime scheduled_at
+        string title
+        string description
+        string tags
+        string status
+        int attempts
+        string last_error
+        datetime created_at
+        datetime updated_at
+    }
+
+    SOCIAL_ACCOUNTS {
+        string id PK
+        string platform UK
+        string profile_path
+        string display_name
+        datetime connected_at
+        datetime last_used_at
+    }
+
+    SETTINGS {
+        string key PK
+        string value
+    }
+```
+
+### Table Schemas
+
 - `jobs`: Video ingestion jobs, original paths, and processing states (`queued`, `transcribing`, `analyzing`, `rendering`, `completed`, `failed`).
 - `transcripts`: Full transcript text, word-level timestamps, and segment data.
 - `clips`: AI-extracted highlight clips, In/Out timecodes, retention scores, storyboard paths, framing mode, audio mode, and hook offset.
-- `scheduled_posts`: Social distribution queue, platform targets, scheduled timestamps, status (`scheduled`, `publishing`, `published`, `failed`), retry attempts, and error logs.
+- `scheduled_posts`: Social distribution queue, platform targets, scheduled timestamps in ISO 8601 UTC with `Z`, status (`scheduled`, `uploading`, `uploaded`, `failed`), retry attempts, and error logs.
 - `social_accounts`: Platform browser profile paths, account names, and authentication states.
 - `settings`: Key-value application configuration store.
 

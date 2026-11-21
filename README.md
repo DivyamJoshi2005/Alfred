@@ -13,6 +13,7 @@
   - [Frontend Studio Architecture](#frontend-studio-architecture)
 - [Local AI Model Fleet](#local-ai-model-fleet)
 - [End-to-End Processing Pipeline](#end-to-end-processing-pipeline)
+  - [Processing Workflow Sequence](#processing-workflow-sequence)
   - [Stage 1: High-Fidelity Audio Demuxing](#stage-1-high-fidelity-audio-demuxing)
   - [Stage 2: Speech-to-Text with Silero VAD](#stage-2-speech-to-text-with-silero-vad)
   - [Stage 3: Multimodal Hook & Viral Retention Analysis](#stage-3-multimodal-hook-viral-retention-analysis)
@@ -20,13 +21,14 @@
   - [Stage 5: Kokoro-82M TTS & Cloned Narration Studio](#stage-5-kokoro-82m-tts-cloned-narration-studio)
   - [Stage 6: Multi-Framing Layout & Precision FFmpeg Assembly](#stage-6-multi-framing-layout-precision-ffmpeg-assembly)
 - [Hardware-Style NLE Multi-Track Sequencer & Live Deck](#hardware-style-nle-multi-track-sequencer-live-deck)
-  - [Multi-Track Sequencer Deck](#multi-track-sequencer-deck)
+  - [Multi-Track Sequencer Architecture](#multi-track-sequencer-architecture)
   - [Precision Micro-Stepping & Whole-Video Scrubbing](#precision-micro-stepping-whole-video-scrubbing)
   - [In-Browser Synchronized Audio Ducking Preview](#in-browser-synchronized-audio-ducking-preview)
 - [Audio Master Routing & Dialogue Isolation](#audio-master-routing-dialogue-isolation)
 - [Presentation-Aware 9:16 Framing Engine](#presentation-aware-916-framing-engine)
 - [Distribution Engine: Instant Publish & Smart Calendar](#distribution-engine-instant-publish-smart-calendar)
   - [Instant "Publish Now" vs "Schedule for Later"](#instant-publish-now-vs-schedule-for-later)
+  - [Distribution State Machine & Retry Lifecycle](#distribution-state-machine-retry-lifecycle)
   - [Queue Management & Failure Recovery](#queue-management-failure-recovery)
   - [Anti-Detection Stealth Playwright Automation](#anti-detection-stealth-playwright-automation)
   - [Self-Healing Browser Setup & Linux Wayland Support](#self-healing-browser-setup-linux-wayland-support)
@@ -34,6 +36,8 @@
 - [Comprehensive Technologies Stack](#comprehensive-technologies-stack)
 - [Repository Directory Structure](#repository-directory-structure)
 - [Database Architecture & Persistence](#database-architecture-persistence)
+  - [Entity-Relationship Diagram](#entity-relationship-diagram)
+  - [SQL Schema Definition](#sql-schema-definition)
 - [Complete REST & WebSocket API Surface](#complete-rest-websocket-api-surface)
 - [Installation & Quickstart Guide](#installation-quickstart-guide)
   - [1. Prerequisites](#1-prerequisites)
@@ -78,7 +82,7 @@ flowchart TD
 
     subgraph Server ["Backend Daemon (FastAPI + Asyncio :8741)"]
         API["REST & WebSocket Gateway"]
-        DB[(SQLite Embedded DB\nWAL Mode)]
+        DB[("SQLite Embedded DB\nWAL Mode")]
         Scheduler["Background Dispatch Worker\n(30s Heartbeat Loop)"]
     end
 
@@ -112,25 +116,58 @@ flowchart TD
 
 ### Backend Daemon & Pipeline Flow
 
-The backend daemon (`backend/main.py`) coordinates pipeline execution asynchronously without blocking the web event loop:
+The backend daemon coordinates pipeline execution asynchronously without blocking the web event loop:
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              FASTAPI ASYNC BACKEND DAEMON                              │
-│                                                                                        │
-│  [HTTP / REST GATEWAY]       [WEBSOCKET GATEWAY]       [BACKGROUND ENGINE]             │
-│  POST /api/jobs/upload  ──►  ws://localhost:8741/ws ──► Pipeline Orchestrator          │
-│  GET  /api/clips/job/{id}◄── Broadcast Stage Progress   (Async Worker Pool)            │
-│  POST /api/clips/rerender    (0% → 100% telemetry)     │                               │
-│  POST /api/schedule/publish-now                        ▼                               │
-│                                                        [LOCAL AI ENGINE]               │
-│  [PERSISTENCE LAYER]                                   1. FFmpeg Audio Demux (16kHz)   │
-│  SQLite DB (~/.alfred/db/alfred.db)                    2. faster-whisper + Silero VAD  │
-│  - jobs & transcripts tables                           3. Multimodal Energy Analyzer   │
-│  - clips (metrics, framing, audio mode, storyboards)   4. Llama 3.2 1B Hook Writer     │
-│  - scheduled_posts (status, attempts, last_error)      5. Kokoro-82M ONNX + Voice Clone│
-│  - social_accounts (persistent Chromium sessions)      6. FFmpeg 9 Filtergraph Muxer   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Inbound ["Inbound Gateway (:8741)"]
+        HTTP["FastAPI REST API\n(/api/jobs, /api/clips, /api/schedule, /api/accounts)"]
+        WS["WebSocket Telemetry Gateway\n(ws://127.0.0.1:8741/ws)"]
+    end
+
+    subgraph Workers ["Asynchronous Background Workers"]
+        Orchestrator["Pipeline Orchestrator\n(6-Stage Automated AI Extraction)"]
+        ReRenderer["Fast Re-Render Engine\n(Targeted FFmpeg seek slices in ~15s)"]
+        Dispatcher["Scheduler Heartbeat Worker\n(Evaluates due queue every 30-60s)"]
+    end
+
+    subgraph PipelineStages ["6-Stage Local AI Processing Engine"]
+        S1["Stage 1: FFmpeg Audio Demux (16kHz Mono WAV)"]
+        S2["Stage 2: faster-whisper Speech-to-Text + Silero VAD"]
+        S3["Stage 3: Multimodal Optical Flow & Audio RMS Spike Analyzer"]
+        S4["Stage 4: Llama 3.2 1B Instruct Viral Hook & Badge Writer"]
+        S5["Stage 5: Kokoro-82M ONNX Synthesis + OpenVoice v2 Cloner"]
+        S6["Stage 6: FFmpeg 9 Filtergraph Assembler & Master Ducking"]
+    end
+
+    subgraph Storage ["SQLite Persistence (WAL Mode)"]
+        T_Jobs[("jobs & transcripts")]
+        T_Clips[("clips (scores, timecodes, modes, storyboards)")]
+        T_Schedule[("scheduled_posts (ISO 8601 UTC, status, attempts)")]
+        T_Accounts[("social_accounts (persistent Chromium profiles)")]
+    end
+
+    subgraph DistributionEngine ["Stealth Browser Distribution Engine"]
+        Playwright["Stealth Playwright Chromium Context\n(Anti-bot evasion, humanized cadence)"]
+        YouTube["YouTube Studio Shorts"]
+        Instagram["Instagram Reels"]
+        Twitter["X / Twitter Video"]
+    end
+
+    HTTP -->|1. Submit Video File| Orchestrator
+    HTTP -->|2. Fine-Tune In/Out or Audio| ReRenderer
+    HTTP -->|3. Schedule or Publish Now| T_Schedule
+
+    Orchestrator --> S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    S6 -->|Persist Candidate Clips| T_Clips
+    ReRenderer -->|Re-mux Single Clip| S6
+
+    Orchestrator -.->|Stream Stage & Progress 0-100%| WS
+    Dispatcher -->|Query due scheduled_at <= now| T_Schedule
+    Dispatcher -->|Trigger Upload Task| Playwright
+    Playwright --> YouTube
+    Playwright --> Instagram
+    Playwright --> Twitter
 ```
 
 1. **Intake & Validation**: Receives video uploads or local file paths via `POST /api/jobs/upload`. Validates codecs, aspect ratios, and durations via `ffprobe`. Creates a job record in SQLite with status `queued`.
@@ -143,28 +180,39 @@ The backend daemon (`backend/main.py`) coordinates pipeline execution asynchrono
 
 ### Frontend Studio Architecture
 
-The frontend (`frontend/src/`) is built with React 19, TypeScript, and Tailwind CSS:
+The frontend is built with React 19, TypeScript, and Tailwind CSS, featuring an architectural layout inspired by Studio Atelier design principles:
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                         REACT 19 + TYPESCRIPT STUDIO ATELIER                           │
-│                                                                                        │
-│  [PAGE ROUTER]               [GLOBAL STATE & API]      [MODULAR COMPONENTS]            │
-│  /process   (ProcessPage)    lib/api.ts                ClipTimelineEditor.tsx          │
-│  /review    (ReviewPage)     context/WebSocketContext  Sidebar.tsx                     │
-│  /calendar  (CalendarPage)   lib/types.ts              Modal.tsx                       │
-│  /settings  (SettingsPage)                                                             │
-│                                                                                        │
-│  [EDITORIAL REVIEW CONSOLE]                                                            │
-│  - Dual Viewport: 16:9 Original Master + 9:16 Vertical Cutdown                         │
-│  - Interactive Multi-Track Sequencer: Timecode ruler, V1 Storyboard, A1 Hook Track     │
-│  - Tactile Micro-Stepping: -5s, -1s, -1f, +1f, +1s, +5s frame-accurate nudges          │
-│  - Unrestricted Video Scrubber: Scrub anywhere from 0:00 to video end                  │
-│  - Mark In / Mark Out: "Set Start Here" & "Set End Here" frame snapping                │
-│  - Audio Master Matrix: Original Audio / Intro Hook / Custom Timeline Voiceover        │
-│  - Live Audio-Ducked Preview: Real-time volume ducking during in-browser preview       │
-│  - One-Click Publishing: Instant "Publish Now" button + Schedule Modal toggle          │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Pages ["Studio Atelier Pages (React 19)"]
+        ProcessPage["ProcessPage\n(Video Drag & Drop, Live WS Telemetry)"]
+        ReviewPage["ReviewPage\n(Dual Viewport & NLE Editorial Console)"]
+        CalendarPage["CalendarPage\n(Broadcast Queue, Live Status & Retry Deck)"]
+        SettingsPage["SettingsPage\n(Model Readiness, Accounts, Voice Recorder)"]
+    end
+
+    subgraph StateAndNet ["State Management & API Layer"]
+        WSContext["WebSocketContext\n(Auto-reconnect & real-time telemetry)"]
+        ApiClient["Typed REST API Client\n(lib/api.ts)"]
+        AudioMixer["In-Browser Audio Ducking Mixer\n(Dynamic volume attenuation to 15%)"]
+    end
+
+    subgraph ModularDeck ["Modular NLE Studio Components"]
+        TimelineEditor["ClipTimelineEditor\n(Timecode ruler, V1 Video & A1 Audio tracks)"]
+        JogDeck["Hardware-Style Jog Deck\n(±1f = 0.033s, ±1s, ±5s micro-nudges)"]
+        DualPlayer["Synchronized Dual Viewport\n(16:9 Master vs 9:16 Smartphone Cutdown)"]
+        VoiceStudio["In-Browser Mic Voice Studio\n(MediaRecorder -> 24kHz Reference WAV)"]
+    end
+
+    ProcessPage <--> ApiClient
+    ProcessPage <--> WSContext
+    ReviewPage --> DualPlayer
+    ReviewPage --> TimelineEditor
+    TimelineEditor --> JogDeck
+    TimelineEditor --> AudioMixer
+    CalendarPage <--> ApiClient
+    SettingsPage --> VoiceStudio
+    SettingsPage <--> ApiClient
 ```
 
 ---
@@ -187,6 +235,8 @@ Alfred runs completely on-device. All 5 local AI models are managed and verified
 
 ## 🔄 End-to-End Processing Pipeline
 
+### Processing Workflow Sequence
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -203,7 +253,7 @@ sequenceDiagram
     
     rect rgb(24, 26, 32)
         note over Server,Engine: 6-Stage Automated AI Extraction Pipeline
-        Server->>Engine: Stage 1: Demux 16kHz Mono Audio (FFmpeg)
+        Server->>Engine: Stage 1: Demux 16kHz Mono Audio (FFmpeg direct stream)
         Server->>Engine: Stage 2: Transcribe speech with word-level timestamps (faster-whisper + Silero VAD)
         Server->>Engine: Stage 3: Multimodal optical flow + audio RMS spike analysis
         Server->>Engine: Stage 4: Generate spoken hooks & visual headline badges (Llama 3.2 1B)
@@ -278,32 +328,37 @@ Alfred does not rely solely on text keywords. The multimodal analyzer (`pipeline
 
 The Editorial Review Console (`frontend/src/components/ClipTimelineEditor.tsx`) gives creators professional NLE capabilities inside the browser:
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        NLE MULTI-TRACK SEQUENCER & LIVE DECK                           │
-│                                                                                        │
-│  [TIMECODE RULER]  00:00        00:15        00:30        00:45        01:00        │
-│  ├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤   │
-│                                                                                        │
-│  [V1 VIDEO TRACK]  [======== ACTIVE CLIP REGION (00:12.4 - 00:48.2) ========]          │
-│                    Thumbnails: [+0.0s]      [+1.0s]      [+2.0s]      [+3.0s]          │
-│                                                                                        │
-│  [A1 HOOK TRACK]          [🔊 Spoken Hook Block (3.2s)]                                │
-│                           ▲ Drag / Slide offset anywhere inside clip boundaries        │
-│                                                                                        │
-│  [SCRUBBER BAR]    Scrub position: 00:24.8 / 01:14.2  [► Play / Pause] [↺ Loop Clip]   │
-│                                                                                        │
-│  [SNAP CONTROLS]   [🚩 Set Start Here]                [🏁 Set End Here]                 │
-│  [MICRO-NUDGES]    Start: [-5s] [-1s] [-1f] [+1f] [+1s] [+5s]                          │
-│                    End:   [-5s] [-1s] [-1f] [+1f] [+1s] [+5s]                          │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+### Multi-Track Sequencer Architecture
 
-### Multi-Track Sequencer Deck
-- **Visual Timecode Ruler**: Dynamic second markers scaling between focused clip view and full video overview.
-- **Video Track (V1)**: Visualizes the active clip region against the parent video, featuring storyboard thumbnail previews.
-- **Voice Hook Track (A1)**: Interactive audio block representing the synthesized spoken hook.
-- **Strict Boundary Constraint**: The hook block is strictly constrained within clip boundaries (`0 <= offset <= clip_duration - hook_duration`), preventing voiceover bleed past clip end.
+```mermaid
+flowchart LR
+    subgraph TimelineDeck ["Multi-Track NLE Sequencer Deck"]
+        Ruler["Dynamic Timecode Ruler\n(Scaled MM:SS markers across clip range)"]
+        TrackV1["Track V1: Video Sequence Layer\n[Visual Storyboard Thumbnails + Active Slice Region]"]
+        TrackA1["Track A1: Audio Hook Layer\n[Interactive Draggable Spoken Hook Block]"]
+    end
+
+    subgraph Controls ["Hardware Tactile Creator Controls"]
+        Scrub["Continuous Video Scrubber\n(Scrub across entire long-form video)"]
+        MicroNudge["Micro-Nudge Precision Buttons\n(±1f = 0.033s | ±1s | ±5s)"]
+        Snapping["Mark In / Mark Out\n(Snap Start/End to current playhead frame)"]
+        ConstrainedDrag["Audio Hook Constraint Engine\n(0 <= offset <= clip_duration - hook_duration)"]
+    end
+
+    subgraph MonitorEngine ["In-Browser Live Verification"]
+        DualMonitor["Dual 16:9 / 9:16 Synchronized Monitor"]
+        LiveDucking["Live Audio Ducking Mixer\n(Smoothly ducks video audio to 15% during hook)"]
+        FastRerender["One-Click Parameterized Re-Render\n(Targeted FFmpeg seek slices in ~15 seconds)"]
+    end
+
+    Scrub --> TimelineDeck
+    MicroNudge --> TimelineDeck
+    Snapping --> TimelineDeck
+    ConstrainedDrag --> TrackA1
+    TimelineDeck --> DualMonitor
+    TimelineDeck --> LiveDucking
+    TimelineDeck --> FastRerender
+```
 
 ### Precision Micro-Stepping & Whole-Video Scrubbing
 - **Frame-Accurate Micro-Stepping**:
@@ -323,6 +378,33 @@ The Editorial Review Console (`frontend/src/components/ClipTimelineEditor.tsx`) 
 
 Alfred eliminates awkward voice collisions between synthetic AI narration and the video's original speaker:
 
+```mermaid
+flowchart TD
+    subgraph Mode1 ["Mode 1: Original Dialogue (original)"]
+        direction LR
+        Src1["Speaker Dialogue\n(100% Volume)"]
+        Out1["Master Audio: Pure Natural Voice\n(0% synthetic voiceover, 0% ducking, 100% fidelity)"]
+        Src1 --> Out1
+    end
+
+    subgraph Mode2 ["Mode 2: Intro Hook at Start (intro_hook)"]
+        direction LR
+        Hook2["Spoken Hook Narration\n(Plays at t = 0.0s)"]
+        Duck2["Speaker Dialogue ducked to 15%\nfor hook duration"]
+        Rec2["Smooth Volume Recovery\nback to 100%"]
+        Hook2 --> Duck2 --> Rec2
+    end
+
+    subgraph Mode3 ["Mode 3: Timeline Voiceover (custom_voiceover)"]
+        direction LR
+        Pre3["Speaker Dialogue at 100%"]
+        Offset3["User Hook Placement\n(hook_offset_sec)"]
+        Duck3["Dialogue dynamically ducked to 15%"]
+        Post3["Smooth Volume Recovery\nback to 100%"]
+        Pre3 --> Offset3 --> Duck3 --> Post3
+    end
+```
+
 | Mode | Identifier | Behavior | Ideal Use Case |
 |---|---|---|---|
 | **Original Sound Only** | `original` | 100% pure source dialogue. Zero AI voiceover, zero audio ducking, zero overlays. | Standalone speeches, funny moments, self-explanatory clips. |
@@ -335,18 +417,28 @@ Alfred eliminates awkward voice collisions between synthetic AI narration and th
 
 Traditional vertical tools center-crop 16:9 video, cutting off up to 60% of presentation slides, code editors, and diagrams. Alfred offers three intelligent framing layouts:
 
-```
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│ [ Blurred Fill ] │  │ [ Speaker Head ] │  │                  │
-│ ┌──────────────┐ │  │ ┌──────────────┐ │  │   YOLOv8n-Face   │
-│ │ 16:9 Master  │ │  │ │  1080 × 720  │ │  │   Dynamic Crop   │
-│ │ Presentation │ │  │ └──────────────┘ │  │   Tracks Speaker │
-│ └──────────────┘ │  │ [ Slides Window] │  │                  │
-│ [ Blurred Fill ] │  │ ┌──────────────┐ │  │                  │
-│                  │  │ │  1080 × 1200 │ │  │                  │
-│                  │  │ └──────────────┘ │  │                  │
-└──────────────────┘  └──────────────────┘  └──────────────────┘
-  Canvas Fit (Fit)     Stacked Split (Split)   Face Focus (Crop)
+```mermaid
+flowchart LR
+    subgraph MasterInput ["Input: 16:9 Widescreen Master"]
+        Input169["Original 16:9 Video\n(Presenter + Slides / Code / Diagram)"]
+    end
+
+    subgraph CanvasFit ["1. Canvas Fit (presentation_fit)"]
+        FitDesc["Full 16:9 Canvas Centered\n+ Dark Blurred Fill Padding\n(100% of slides, code, diagrams & subtitles remain visible)"]
+    end
+
+    subgraph StackedSplit ["2. Stacked Split (split_screen)"]
+        SplitTop["Top 40%: Speaker Talking Head Window"]
+        SplitBottom["Bottom 60%: Slide Presentation Window"]
+    end
+
+    subgraph FaceFocus ["3. Face Focus (face_focus)"]
+        CropDesc["YOLOv8n-Face Real-Time Tracking\nKinetic 9:16 Smart Crop for talking heads"]
+    end
+
+    Input169 --> CanvasFit
+    Input169 --> StackedSplit
+    Input169 --> FaceFocus
 ```
 
 1. **Canvas Fit (`presentation_fit`)**: Places the full 16:9 canvas in the center with a subtle dark blurred background fill. **100% of slides, code, equations, and subtitles remain visible.**
@@ -362,6 +454,37 @@ Alfred includes an offline-first social distribution system that bypasses offici
 ### Instant "Publish Now" vs "Schedule for Later"
 - **⚡ Instant "Publish Now"**: 1-click button on clip cards (`POST /api/schedule/publish-now`). Immediately queues the clip and triggers an asynchronous background upload task.
 - **📅 Schedule for Later**: The schedule modal lets you switch between immediate publication and scheduled publication with custom dates, titles, descriptions, and hashtags.
+
+### Distribution State Machine & Retry Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Scheduled: Schedule for Later
+    [*] --> Publishing: Publish Now (Instant Upload)
+
+    Scheduled --> DueCheck: Scheduler Loop (30-60s heartbeat)
+    DueCheck --> Publishing: scheduled_at <= now()
+
+    Publishing --> LaunchBrowser: Launch Stealth Playwright
+    LaunchBrowser --> VerifySession: Check Saved Cookie Auth
+
+    VerifySession --> PerformUpload: Authenticated
+    VerifySession --> SessionExpired: Session Expired / Not Logged In
+
+    PerformUpload --> Published: Upload Successful
+    PerformUpload --> UploadError: Browser / DOM Error
+    SessionExpired --> UploadError: Authentication Required
+
+    UploadError --> AutoRetry: attempts < 3
+    AutoRetry --> Publishing: Exponential Backoff (30s)
+
+    UploadError --> Failed: attempts >= 3
+    Failed --> Scheduled: 1-Click "Retry Upload"
+    Failed --> Scheduled: Bulk "Retry All Failed"
+    Failed --> [*]: "Clear Failed" / Delete Post
+
+    Published --> [*]
+```
 
 ### Queue Management & Failure Recovery
 The Broadcast Calendar (`frontend/src/pages/CalendarPage.tsx`) provides complete queue control:
@@ -529,6 +652,87 @@ Alfred/
 ## 🗄️ Database Architecture & Persistence
 
 Alfred uses an embedded SQLite database with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) located at `~/.alfred/db/alfred.db`:
+
+### Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+    JOBS ||--o{ TRANSCRIPTS : "contains"
+    JOBS ||--o{ CLIPS : "generates"
+    CLIPS ||--o{ SCHEDULED_POSTS : "publishes"
+    SOCIAL_ACCOUNTS ||--o{ SCHEDULED_POSTS : "dispatches_to"
+
+    JOBS {
+        string id PK
+        string video_path
+        string video_name
+        string status
+        datetime created_at
+        datetime updated_at
+        string error_msg
+    }
+
+    TRANSCRIPTS {
+        string id PK
+        string job_id FK
+        string full_text
+        string segments
+        string words
+        datetime created_at
+    }
+
+    CLIPS {
+        string id PK
+        string job_id FK
+        int rank
+        float start_time
+        float end_time
+        float duration
+        string transcript_text
+        string hook_text
+        string hook_audio_path
+        string output_path
+        string status
+        float visual_score
+        float audio_score
+        float hook_score
+        float retention_score
+        string storyboard_paths
+        string audio_mode
+        float hook_offset_sec
+    }
+
+    SCHEDULED_POSTS {
+        string id PK
+        string clip_id FK
+        string platform
+        datetime scheduled_at
+        string title
+        string description
+        string tags
+        string status
+        int attempts
+        string last_error
+        datetime created_at
+        datetime updated_at
+    }
+
+    SOCIAL_ACCOUNTS {
+        string id PK
+        string platform UK
+        string profile_path
+        string display_name
+        datetime connected_at
+        datetime last_used_at
+    }
+
+    SETTINGS {
+        string key PK
+        string value
+    }
+```
+
+### SQL Schema Definition
 
 ```sql
 -- Core job tracking
