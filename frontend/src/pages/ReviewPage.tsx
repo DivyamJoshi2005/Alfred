@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { jobs as jobsApi, clips as clipsApi, schedule as scheduleApi, settings as settingsApi } from '../lib/api'
 import type { Job, Clip } from '../lib/types'
-import { formatTime, cn } from '../lib/utils'
+import { formatTime, formatDateTimeLocalInput, cn } from '../lib/utils'
 import { Modal } from '../components/Modal'
 import { ClipTimelineEditor } from '../components/ClipTimelineEditor'
 
@@ -251,11 +251,11 @@ export function ReviewPage() {
     setScheduleTitle(clip.hook_text || `Highlight from video`)
     setScheduleDescription(clip.transcript_text.slice(0, 250) + '...')
     setScheduleTags('#shorts #reels #viral #content')
-    // Default to tomorrow 10:00 AM
+    // Default to tomorrow 10:00 AM in user's local time
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
     tomorrow.setHours(10, 0, 0, 0)
-    setScheduleDateTime(tomorrow.toISOString().slice(0, 16))
+    setScheduleDateTime(formatDateTimeLocalInput(tomorrow))
     setScheduleSuccessMsg(null)
   }
 

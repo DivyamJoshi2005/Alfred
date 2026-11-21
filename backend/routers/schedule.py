@@ -1,11 +1,23 @@
 """Alfred Backend — Schedule API router."""
 
+import re
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from models import ScheduleCreate, ScheduleUpdate, ScheduleResponse, PublishNowRequest
 from database import get_db
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
+
+
+def _normalize_iso_utc(val: str | None) -> str:
+    """Ensure timestamp strings from database or clients are valid ISO 8601 UTC strings."""
+    if not val:
+        return ""
+    s = str(val).strip().replace(" ", "T")
+    if not s.endswith("Z") and not re.search(r"[+-]\d{2}:?\d{2}$", s):
+        s += "Z"
+    return s
 
 
 @router.post("/publish-now", response_model=ScheduleResponse, status_code=201)
@@ -24,10 +36,11 @@ async def publish_post_now(body: PublishNowRequest, background_tasks: Background
             await db.commit()
 
         post_id = str(uuid.uuid4())
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         await db.execute(
             """INSERT INTO scheduled_posts (id, clip_id, platform, scheduled_at, title, description, tags, status, attempts)
-               VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 'scheduled', 0)""",
-            (post_id, body.clip_id, body.platform, body.title, body.description, body.tags),
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', 0)""",
+            (post_id, body.clip_id, body.platform, now_utc, body.title, body.description, body.tags),
         )
         await db.commit()
 
@@ -57,10 +70,11 @@ async def create_scheduled_post(body: ScheduleCreate):
             raise HTTPException(status_code=400, detail="Clip must be approved before scheduling")
 
         post_id = str(uuid.uuid4())
+        norm_scheduled_at = _normalize_iso_utc(body.scheduled_at)
         await db.execute(
             """INSERT INTO scheduled_posts (id, clip_id, platform, scheduled_at, title, description, tags)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (post_id, body.clip_id, body.platform, body.scheduled_at,
+            (post_id, body.clip_id, body.platform, norm_scheduled_at,
              body.title, body.description, body.tags),
         )
         await db.commit()
@@ -111,11 +125,15 @@ async def update_scheduled_post(post_id: str, body: ScheduleUpdate):
 
         updates = []
         params = []
-        for field in ["scheduled_at", "title", "description", "tags"]:
+        for field in ["title", "description", "tags"]:
             value = getattr(body, field, None)
             if value is not None:
                 updates.append(f"{field} = ?")
                 params.append(value)
+
+        if body.scheduled_at is not None:
+            updates.append("scheduled_at = ?")
+            params.append(_normalize_iso_utc(body.scheduled_at))
 
         # If rescheduled or explicitly set to scheduled, reset failure counters
         target_status = body.status
@@ -132,7 +150,9 @@ async def update_scheduled_post(post_id: str, body: ScheduleUpdate):
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
 
-        updates.append("updated_at = CURRENT_TIMESTAMP")
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        updates.append("updated_at = ?")
+        params.append(now_utc)
         params.append(post_id)
         await db.execute(
             f"UPDATE scheduled_posts SET {', '.join(updates)} WHERE id = ?",
@@ -156,12 +176,13 @@ async def retry_scheduled_post(post_id: str, background_tasks: BackgroundTasks):
         if not existing:
             raise HTTPException(status_code=404, detail="Scheduled post not found")
 
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         await db.execute(
             """UPDATE scheduled_posts
                SET status = 'scheduled', attempts = 0, last_error = NULL,
-                   scheduled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                   scheduled_at = ?, updated_at = ?
                WHERE id = ?""",
-            (post_id,),
+            (now_utc, now_utc, post_id),
         )
         await db.commit()
 
@@ -181,11 +202,13 @@ async def retry_all_failed_posts(background_tasks: BackgroundTasks):
     """Reset all failed posts back to scheduled and trigger upload."""
     db = await get_db()
     try:
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         await db.execute(
             """UPDATE scheduled_posts
                SET status = 'scheduled', attempts = 0, last_error = NULL,
-                   scheduled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-               WHERE status = 'failed'"""
+                   scheduled_at = ?, updated_at = ?
+               WHERE status = 'failed'""",
+            (now_utc, now_utc),
         )
         await db.commit()
 
@@ -227,10 +250,16 @@ async def delete_scheduled_post(post_id: str):
 
 def _row_to_response(row) -> ScheduleResponse:
     return ScheduleResponse(
-        id=row["id"], clip_id=row["clip_id"], platform=row["platform"],
-        scheduled_at=row["scheduled_at"], title=row["title"],
-        description=row["description"], tags=row["tags"],
-        status=row["status"], attempts=row["attempts"],
-        last_error=row["last_error"], created_at=row["created_at"],
-        updated_at=row["updated_at"],
+        id=row["id"],
+        clip_id=row["clip_id"],
+        platform=row["platform"],
+        scheduled_at=_normalize_iso_utc(row["scheduled_at"]),
+        title=row["title"],
+        description=row["description"],
+        tags=row["tags"],
+        status=row["status"],
+        attempts=row["attempts"],
+        last_error=row["last_error"],
+        created_at=_normalize_iso_utc(row["created_at"]),
+        updated_at=_normalize_iso_utc(row["updated_at"]),
     )

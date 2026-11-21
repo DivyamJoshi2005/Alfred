@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { schedule as scheduleApi } from '../lib/api'
 import type { ScheduledPost } from '../lib/types'
-import { cn } from '../lib/utils'
+import { cn, formatDisplayDate, formatDateTimeLocalInput, parseUtcDate } from '../lib/utils'
 import { Modal } from '../components/Modal'
 
 export function CalendarPage() {
@@ -96,10 +96,9 @@ export function CalendarPage() {
     setEditTitle(post.title || '')
     setEditDescription(post.description || '')
     setEditTags(post.tags || '')
-    // Format to yyyy-MM-ddThh:mm
-    const dt = new Date(post.scheduled_at)
-    const localIso = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-    setEditDateTime(localIso)
+    // Format to yyyy-MM-ddThh:mm using local wall-clock time
+    const dt = parseUtcDate(post.scheduled_at)
+    setEditDateTime(formatDateTimeLocalInput(dt))
   }
 
   const handleSaveEdit = async () => {
@@ -287,14 +286,7 @@ export function CalendarPage() {
       ) : (
         <div className="space-y-3">
           {filteredPosts.map((post) => {
-            const scheduledDate = new Date(post.scheduled_at)
-            const formattedTime = scheduledDate.toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true,
-            })
+            const formattedTime = formatDisplayDate(post.scheduled_at)
 
             return (
               <div
