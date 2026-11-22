@@ -22,7 +22,7 @@ import {
   Upload
 } from 'lucide-react'
 import { jobs as jobsApi, clips as clipsApi, schedule as scheduleApi, settings as settingsApi, getApiBase } from '../lib/api'
-import type { Job, Clip } from '../lib/types'
+import type { Job, Clip, SoundProfile, VoiceSample } from '../lib/types'
 import { formatTime, formatDateTimeLocalInput, cn } from '../lib/utils'
 import { Modal } from '../components/Modal'
 import { ClipTimelineEditor } from '../components/ClipTimelineEditor'
@@ -141,16 +141,15 @@ export function ReviewPage() {
   const [synthesizingId, setSynthesizingId] = useState<string | null>(null)
   const [renderTimestamps, setRenderTimestamps] = useState<Record<string, number>>({})
 
-  // Sound Profile from Settings
-  const [activeSoundProfile, setActiveSoundProfile] = useState<{
-    preset: string
-    cloningEnabled: boolean
-    sampleName: string | null
-  }>({
-    preset: 'af_heart',
+  // Sound Profile from Settings & Per-Clip Overrides
+  const [activeSoundProfile, setActiveSoundProfile] = useState<SoundProfile>({
+    preset: 'af_sarah',
     cloningEnabled: false,
     sampleName: null,
   })
+  const [clipSoundProfiles, setClipSoundProfiles] = useState<Record<string, SoundProfile>>({})
+  const [availableVoiceSamples, setAvailableVoiceSamples] = useState<VoiceSample[]>([])
+  const [audioTimestamps, setAudioTimestamps] = useState<Record<string, number>>({})
 
   // Video preview modal
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
@@ -172,10 +171,12 @@ export function ReviewPage() {
       try {
         const [appSettings, samples] = await Promise.all([
           settingsApi.get().catch(() => ({} as Record<string, string>)),
-          settingsApi.voiceSamples().catch(() => [] as Array<{ name: string; has_embedding: boolean }>),
+          settingsApi.voiceSamples().catch(() => [] as VoiceSample[]),
         ])
+        setAvailableVoiceSamples(samples)
         const s = appSettings as Record<string, string>
-        const preset = s.voice_preset || 'af_heart'
+        const rawPreset = s.voice_preset || 'af_sarah'
+        const preset = rawPreset === 'af_heart' ? 'af_sarah' : rawPreset
         const cloningEnabled = s.voice_cloning_enabled === 'true'
         const selectedSample = s.selected_voice_sample || (samples.find(sm => sm.has_embedding)?.name || null)
         setActiveSoundProfile({
@@ -276,6 +277,21 @@ export function ReviewPage() {
     }
   }
 
+  const handleSetGlobalDefaultSoundProfile = async (profile: SoundProfile) => {
+    try {
+      await settingsApi.update({
+        voice_preset: profile.preset,
+        voice_cloning_enabled: profile.cloningEnabled ? 'true' : 'false',
+        selected_voice_sample: profile.sampleName || '',
+      })
+      setActiveSoundProfile(profile)
+      alert(`Default voice profile updated to "${profile.preset}" across Alfred!`)
+    } catch (err: unknown) {
+      console.error('Failed to update global sound profile', err)
+      alert('Could not update global voice setting')
+    }
+  }
+
   const handleReRender = async (clip: Clip) => {
     setRerenderingId(clip.id)
     try {
@@ -285,6 +301,7 @@ export function ReviewPage() {
       const hook_offset_sec = hookOffsets[clip.id] ?? 0.0
       const ducking_volume = duckingVolumes[clip.id] ?? clip.ducking_volume ?? 0.15
       const hook_text = editHooks[clip.id] ?? clip.hook_text
+      const profile = clipSoundProfiles[clip.id] || activeSoundProfile
 
       const updated = await clipsApi.rerender(clip.id, {
         start_time,
@@ -294,9 +311,9 @@ export function ReviewPage() {
         hook_offset_sec,
         ducking_volume,
         hook_text: audio_mode !== 'original' ? hook_text : undefined,
-        voice_preset: activeSoundProfile.preset,
-        use_cloned_voice: activeSoundProfile.cloningEnabled,
-        reference_sample_name: activeSoundProfile.sampleName || undefined,
+        voice_preset: profile.preset,
+        use_cloned_voice: profile.cloningEnabled,
+        reference_sample_name: profile.sampleName || undefined,
       })
       setClipsList(prev => prev.map(c => c.id === clip.id ? updated : c))
       setTrimStarts(prev => ({ ...prev, [clip.id]: updated.start_time }))
@@ -305,6 +322,7 @@ export function ReviewPage() {
       setHookOffsets(prev => ({ ...prev, [clip.id]: updated.hook_offset_sec ?? hook_offset_sec }))
       setDuckingVolumes(prev => ({ ...prev, [clip.id]: updated.ducking_volume ?? ducking_volume }))
       setRenderTimestamps(prev => ({ ...prev, [clip.id]: Date.now() }))
+      setAudioTimestamps(prev => ({ ...prev, [clip.id]: Date.now() }))
       alert('Clip re-rendered successfully with your custom timing and audio settings!')
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Re-rendering failed')
@@ -313,26 +331,28 @@ export function ReviewPage() {
     }
   }
 
-  const handleSynthesizeVoice = async (clip: Clip) => {
+  const handleSynthesizeVoice = async (clip: Clip, overrideProfile?: SoundProfile) => {
     const text = editHooks[clip.id] || clip.hook_text || ''
     if (!text.trim()) {
       alert('Please enter hook text before generating speech')
       return
     }
+    const profile = overrideProfile || clipSoundProfiles[clip.id] || activeSoundProfile
     setSynthesizingId(clip.id)
     try {
       const res = await clipsApi.synthesize(clip.id, {
         script_text: text,
-        voice_preset: activeSoundProfile.preset,
-        use_cloned_voice: activeSoundProfile.cloningEnabled,
-        reference_sample_name: activeSoundProfile.sampleName || undefined,
+        voice_preset: profile.preset,
+        use_cloned_voice: profile.cloningEnabled,
+        reference_sample_name: profile.sampleName || undefined,
       })
       setClipsList(prev => prev.map(c => c.id === clip.id ? { 
         ...c, 
         hook_audio_path: res.hook_audio_path,
         hook_text: res.hook_text 
       } : c))
-      alert('Spoken audio hook generated using active sound profile!')
+      setAudioTimestamps(prev => ({ ...prev, [clip.id]: Date.now() }))
+      alert(`Spoken audio hook generated using ${profile.cloningEnabled ? `Cloned Voice (${profile.sampleName || 'Custom'})` : profile.preset}!`)
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Voice generation failed')
     } finally {
@@ -769,7 +789,11 @@ export function ReviewPage() {
                         videoPath={selectedJob?.video_path || ''}
                         renderedPath={clip.output_path}
                         renderTimestamp={renderTimestamps[clip.id] || 0}
-                        activeSoundProfile={activeSoundProfile}
+                        audioTimestamp={audioTimestamps[clip.id] || 0}
+                        activeSoundProfile={clipSoundProfiles[clip.id] || activeSoundProfile}
+                        availableVoiceSamples={availableVoiceSamples}
+                        onSoundProfileChange={(p) => setClipSoundProfiles(prev => ({ ...prev, [clip.id]: p }))}
+                        onSetGlobalDefaultSoundProfile={handleSetGlobalDefaultSoundProfile}
                         startTime={trimStarts[clip.id] ?? clip.start_time}
                         endTime={trimEnds[clip.id] ?? clip.end_time}
                         audioMode={audioModes[clip.id] || clip.audio_mode || 'original'}
@@ -783,7 +807,7 @@ export function ReviewPage() {
                         onHookTextChange={(text) => setEditHooks(prev => ({ ...prev, [clip.id]: text }))}
                         onDuckingVolumeChange={(vol) => setDuckingVolumes(prev => ({ ...prev, [clip.id]: vol }))}
                         onSaveHookText={() => handleSaveHookText(clip.id)}
-                        onSynthesizeVoice={() => handleSynthesizeVoice(clip)}
+                        onSynthesizeVoice={(prof) => handleSynthesizeVoice(clip, prof)}
                         onRerender={() => handleReRender(clip)}
                         isSynthesizing={synthesizingId === clip.id}
                         isRerendering={rerenderingId === clip.id}

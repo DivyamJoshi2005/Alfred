@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { settings as settingsApi, accounts as accountsApi } from '../lib/api'
 import type { SocialAccount, ModelStatus, VoiceSample } from '../lib/types'
+import { KOKORO_VOICES, VOICE_DISPLAY_NAMES } from '../lib/types'
 import { cn } from '../lib/utils'
 
 const REFERENCE_PROMPTS = [
@@ -47,13 +48,15 @@ export function SettingsPage() {
   const [accountStatuses, setAccountStatuses] = useState<Record<string, { checking?: boolean; authenticated?: boolean; error?: string }>>({})
 
   // Voice & Audio
-  const [voicePreset, setVoicePreset] = useState('af_heart')
+  const [voicePreset, setVoicePreset] = useState('af_sarah')
   const [voiceCloningEnabled, setVoiceCloningEnabled] = useState(false)
   const [selectedVoiceSample, setSelectedVoiceSample] = useState<string | null>(null)
   const [voiceSamples, setVoiceSamples] = useState<VoiceSample[]>([])
   const [uploadingVoice, setUploadingVoice] = useState(false)
   const [sampleName, setSampleName] = useState('')
   const [selectedVoiceFile, setSelectedVoiceFile] = useState<File | null>(null)
+  const [savingVoice, setSavingVoice] = useState(false)
+  const [voiceFeedback, setVoiceFeedback] = useState<string | null>(null)
 
   // Live Voice Recording
   const [voiceInputMode, setVoiceInputMode] = useState<'record' | 'upload'>('record')
@@ -194,7 +197,10 @@ export function SettingsPage() {
       setModelsStatus(models)
 
       const s = appSettings as Record<string, string>
-      if (s.voice_preset) setVoicePreset(s.voice_preset)
+      if (s.voice_preset) {
+        const mapped = s.voice_preset === 'af_heart' ? 'af_sarah' : s.voice_preset
+        setVoicePreset(mapped)
+      }
       if (s.voice_cloning_enabled) setVoiceCloningEnabled(s.voice_cloning_enabled === 'true')
       if (s.selected_voice_sample) {
         setSelectedVoiceSample(s.selected_voice_sample)
@@ -297,16 +303,53 @@ export function SettingsPage() {
     }
   }
 
+  const handleSelectVoicePreset = async (presetId: string) => {
+    setVoicePreset(presetId)
+    setSavingVoice(true)
+    try {
+      await settingsApi.update({ voice_preset: presetId })
+      setVoiceFeedback(`Saved: Default voice set to ${VOICE_DISPLAY_NAMES[presetId] || presetId}`)
+      setTimeout(() => setVoiceFeedback(null), 3500)
+    } catch (err: unknown) {
+      console.error('Failed to update voice preset', err)
+      setVoiceFeedback('Failed to save voice preset')
+    } finally {
+      setSavingVoice(false)
+    }
+  }
+
+  const handleToggleVoiceCloning = async () => {
+    const next = !voiceCloningEnabled
+    setVoiceCloningEnabled(next)
+    setSavingVoice(true)
+    try {
+      await settingsApi.update({ voice_cloning_enabled: next ? 'true' : 'false' })
+      setVoiceFeedback(next ? 'Saved: Voice cloning enabled' : 'Saved: Voice cloning disabled (using AI preset)')
+      setTimeout(() => setVoiceFeedback(null), 3500)
+    } catch (err: unknown) {
+      console.error('Failed to update voice cloning state', err)
+      setVoiceFeedback('Failed to update voice cloning setting')
+    } finally {
+      setSavingVoice(false)
+    }
+  }
+
   const handleSelectVoiceSample = async (sampleName: string) => {
     setSelectedVoiceSample(sampleName)
+    setSavingVoice(true)
     try {
       await settingsApi.update({
         selected_voice_sample: sampleName,
         voice_cloning_enabled: 'true',
       })
       setVoiceCloningEnabled(true)
+      setVoiceFeedback(`Saved: Active cloned voice profile set to "${sampleName}"`)
+      setTimeout(() => setVoiceFeedback(null), 3500)
     } catch (err: unknown) {
       console.error('Failed to update active voice sample', err)
+      setVoiceFeedback('Failed to set active voice sample')
+    } finally {
+      setSavingVoice(false)
     }
   }
 
@@ -549,39 +592,69 @@ export function SettingsPage() {
       {/* Tab: Voice & Audio */}
       {activeTab === 'voice' && (
         <div className="space-y-6">
+          {voiceFeedback && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center justify-between animate-fade-in shadow-2xs">
+              <span className="flex items-center gap-1.5 font-medium">
+                <Check size={14} className="text-emerald-600" />
+                {voiceFeedback}
+              </span>
+              <span className="text-[10px] text-emerald-600 font-semibold uppercase tracking-wider">Synced to database</span>
+            </div>
+          )}
+
           <div className="bg-surface rounded-xl border border-border p-6 shadow-xs space-y-5">
-            <div>
-              <h3 className="text-base font-semibold text-text">Spoken Audio Presets</h3>
-              <p className="text-xs text-text-secondary mt-1">
-                Choose the default voice used by the Kokoro 82M TTS engine for spoken hooks.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-semibold text-text">Spoken Audio Presets</h3>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Choose the default voice used by the Kokoro-82M TTS engine for hook voiceovers. Changes save instantly.
+                </p>
+              </div>
+              {savingVoice && (
+                <div className="inline-flex items-center gap-1.5 text-xs text-accent font-medium bg-accent-light/40 px-2.5 py-1 rounded-md">
+                  <Loader2 size={12} className="animate-spin" />
+                  Saving...
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {[
-                { id: 'af_heart', name: 'Heart (Warm & Engaging)', desc: 'Friendly, modern narration style' },
-                { id: 'af_bella', name: 'Bella (Clear & Upbeat)', desc: 'Bright, articulate delivery' },
-                { id: 'af_nicole', name: 'Nicole (Relaxed & Natural)', desc: 'Casual conversational tone' },
-                { id: 'am_adam', name: 'Adam (Confident & Direct)', desc: 'Professional male presenter' },
-                { id: 'am_michael', name: 'Michael (Deep & Grounded)', desc: 'Authoritative podcast tone' },
-              ].map(voice => (
-                <div
-                  key={voice.id}
-                  onClick={() => setVoicePreset(voice.id)}
-                  className={cn(
-                    "p-3.5 rounded-lg border text-left cursor-pointer transition-all",
-                    voicePreset === voice.id
-                      ? "border-accent bg-accent-light/30 ring-1 ring-accent"
-                      : "border-border hover:border-stone-400 bg-white"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-text">{voice.name}</p>
-                    {voicePreset === voice.id && <Check size={16} className="text-accent" />}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {KOKORO_VOICES.map(voice => {
+                const isSelected = voicePreset === voice.id && !voiceCloningEnabled
+                return (
+                  <div
+                    key={voice.id}
+                    onClick={() => handleSelectVoicePreset(voice.id)}
+                    className={cn(
+                      "p-3.5 rounded-lg border text-left cursor-pointer transition-all flex flex-col justify-between",
+                      isSelected
+                        ? "border-accent bg-accent-light/30 ring-1 ring-accent shadow-xs"
+                        : "border-border hover:border-stone-400 bg-white"
+                    )}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-text">{voice.name}</p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200">
+                            {voice.accent} {voice.gender === 'female' ? '♀' : '♂'}
+                          </span>
+                        </div>
+                        {isSelected && <Check size={16} className="text-accent shrink-0" />}
+                      </div>
+                      <p className="text-xs text-text-muted leading-snug">{voice.desc}</p>
+                    </div>
+                    <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
+                      <span className="text-stone-500 font-medium">{voice.tag}</span>
+                      {isSelected ? (
+                        <span className="font-semibold text-accent">Active Voice</span>
+                      ) : (
+                        <span className="text-text-muted hover:text-text">Click to Select</span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-text-muted mt-1">{voice.desc}</p>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             <div className="pt-4 border-t border-border flex items-center justify-between">
@@ -591,7 +664,7 @@ export function SettingsPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setVoiceCloningEnabled(!voiceCloningEnabled)}
+                onClick={handleToggleVoiceCloning}
                 className={cn(
                   "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
                   voiceCloningEnabled ? "bg-accent" : "bg-stone-200"

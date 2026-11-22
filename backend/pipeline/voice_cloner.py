@@ -25,7 +25,10 @@ class VoiceCloner:
     def __init__(self, checkpoints_dir: Path = OPENVOICE_DIR, samples_dir: Path = VOICE_SAMPLES_DIR):
         self.checkpoints_dir = checkpoints_dir
         self.samples_dir = samples_dir
-        self.samples_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.samples_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
         self.converter = None
 
     def is_model_downloaded(self) -> bool:

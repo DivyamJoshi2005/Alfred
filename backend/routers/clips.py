@@ -181,7 +181,7 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
             s_rows = await settings_cur.fetchall()
             settings_map = {r["key"]: r["value"] for r in s_rows}
 
-            voice_preset = body.voice_preset or settings_map.get("voice_preset", "af_heart")
+            voice_preset = body.voice_preset or settings_map.get("voice_preset", "af_sarah")
             cloning_enabled = (
                 body.use_cloned_voice
                 if body.use_cloned_voice is not None
@@ -301,7 +301,7 @@ async def synthesize_clip_voice(clip_id: str, body: ClipSynthesizeRequest):
         s_rows = await settings_cur.fetchall()
         settings_map = {r["key"]: r["value"] for r in s_rows}
 
-        voice_preset = body.voice_preset or settings_map.get("voice_preset", "af_heart")
+        voice_preset = body.voice_preset or settings_map.get("voice_preset", "af_sarah")
         use_cloned = (
             body.use_cloned_voice
             if body.use_cloned_voice is not None

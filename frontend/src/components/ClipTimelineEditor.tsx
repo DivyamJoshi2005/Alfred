@@ -18,7 +18,8 @@ import {
   Globe,
   Flag,
 } from 'lucide-react'
-import type { Clip } from '../lib/types'
+import type { Clip, SoundProfile, VoiceSample } from '../lib/types'
+import { KOKORO_VOICES, VOICE_DISPLAY_NAMES } from '../lib/types'
 import { formatTime, cn } from '../lib/utils'
 import { getApiBase } from '../lib/api'
 
@@ -27,11 +28,11 @@ interface ClipTimelineEditorProps {
   videoPath: string
   renderedPath?: string | null
   renderTimestamp?: number
-  activeSoundProfile: {
-    preset: string
-    cloningEnabled: boolean
-    sampleName: string | null
-  }
+  audioTimestamp?: number
+  activeSoundProfile: SoundProfile
+  availableVoiceSamples?: VoiceSample[]
+  onSoundProfileChange?: (profile: SoundProfile) => void
+  onSetGlobalDefaultSoundProfile?: (profile: SoundProfile) => Promise<void>
   startTime: number
   endTime: number
   audioMode: string
@@ -45,18 +46,10 @@ interface ClipTimelineEditorProps {
   onHookTextChange: (text: string) => void
   onDuckingVolumeChange?: (volume: number) => void
   onSaveHookText: () => Promise<void>
-  onSynthesizeVoice: () => Promise<void>
+  onSynthesizeVoice: (profile?: SoundProfile) => Promise<void>
   onRerender: () => Promise<void>
   isSynthesizing: boolean
   isRerendering: boolean
-}
-
-const VOICE_PRESET_NAMES: Record<string, string> = {
-  af_heart: 'Heart (Warm & Engaging)',
-  af_bella: 'Bella (Clear & Upbeat)',
-  af_nicole: 'Nicole (Relaxed & Natural)',
-  am_adam: 'Adam (Confident & Direct)',
-  am_michael: 'Michael (Deep & Grounded)',
 }
 
 // Realistic video editing nudge steps:
@@ -75,7 +68,11 @@ export function ClipTimelineEditor({
   videoPath,
   renderedPath,
   renderTimestamp = 0,
+  audioTimestamp = 0,
   activeSoundProfile,
+  availableVoiceSamples = [],
+  onSoundProfileChange,
+  onSetGlobalDefaultSoundProfile,
   startTime,
   endTime,
   audioMode,
@@ -95,6 +92,19 @@ export function ClipTimelineEditor({
   isRerendering,
 }: ClipTimelineEditorProps) {
   const currentDuration = Math.max(0.1, endTime - startTime)
+
+  // Sound Profile State
+  const [localProfile, setLocalProfile] = useState<SoundProfile>(activeSoundProfile)
+  const [profileTab, setProfileTab] = useState<'presets' | 'cloned'>(
+    activeSoundProfile.cloningEnabled ? 'cloned' : 'presets'
+  )
+  const [isSettingGlobal, setIsSettingGlobal] = useState(false)
+  const [globalSavedFeedback, setGlobalSavedFeedback] = useState(false)
+
+  useEffect(() => {
+    setLocalProfile(activeSoundProfile)
+    setProfileTab(activeSoundProfile.cloningEnabled ? 'cloned' : 'presets')
+  }, [activeSoundProfile])
 
   // Overall video duration (detected from video element metadata or default)
   const [totalVideoDuration, setTotalVideoDuration] = useState<number>(Math.max(endTime + 60, 120))
@@ -122,17 +132,17 @@ export function ClipTimelineEditor({
   const viewEnd = zoomMode === 'all' ? totalVideoDuration : Math.min(totalVideoDuration, endTime + 25)
   const viewSpan = Math.max(1, viewEnd - viewStart)
 
-  // Load actual hook duration if audio exists
+  // Load actual hook duration if audio exists (cache-busted via audioTimestamp)
   useEffect(() => {
     if (clip.hook_audio_path) {
-      const audio = new Audio(`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`)
+      const audio = new Audio(`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}&t=${audioTimestamp || renderTimestamp || 0}`)
       audio.onloadedmetadata = () => {
         if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
           setHookDuration(Math.max(1.0, Math.round(audio.duration * 10) / 10))
         }
       }
     }
-  }, [clip.hook_audio_path])
+  }, [clip.hook_audio_path, audioTimestamp, renderTimestamp])
 
   // Constrain voice hook offset so it ALWAYS fits within the clip length!
   const maxHookOffset = Math.max(0, parseFloat((currentDuration - hookDuration).toFixed(1)))
@@ -407,11 +417,12 @@ export function ClipTimelineEditor({
 
   return (
     <div className="bg-stone-900 border-t border-stone-800 text-stone-200 p-5 rounded-b-xl space-y-5 shadow-2xl animate-fade-in font-sans">
-      {/* Hidden audio element for synchronized audio preview */}
+      {/* Hidden audio element for synchronized audio preview (cache-busted via audioTimestamp) */}
       {clip.hook_audio_path && (
         <audio
           ref={hookAudioRef}
-          src={`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`}
+          key={`sync-${clip.id}-${audioTimestamp || renderTimestamp || 0}`}
+          src={`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}&t=${audioTimestamp || renderTimestamp || 0}`}
           preload="auto"
         />
       )}
@@ -1144,34 +1155,224 @@ export function ClipTimelineEditor({
         </div>
       )}
 
-      {/* Voice Profile Banner & Hook Text Script */}
+      {/* Voiceover Profile Selector & Hook Text Script */}
       {audioMode !== 'original' && (
-        <div className="space-y-3 p-3.5 rounded-xl bg-stone-800/40 border border-stone-800 text-xs animate-fade-in">
-          {/* Active Sound Profile */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
-            <div className="flex items-center gap-2">
-              <Mic size={13} className="text-accent" />
-              <span className="font-semibold text-stone-300">Voice Profile: </span>
-              {activeSoundProfile.cloningEnabled ? (
-                <span className="text-accent font-semibold">
-                  Cloned Voice ({activeSoundProfile.sampleName || 'User Sample'})
-                </span>
-              ) : (
-                <span className="text-stone-300">
-                  {VOICE_PRESET_NAMES[activeSoundProfile.preset] || activeSoundProfile.preset}
-                </span>
-              )}
+        <div className="space-y-4 p-4 rounded-xl bg-stone-850 border border-stone-800 text-xs animate-fade-in shadow-lg">
+          {/* Active Sound Profile Banner & Switcher */}
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800 pb-2.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Mic size={14} className="text-accent" />
+                <span className="font-semibold text-white text-xs">Voiceover Profile:</span>
+                {localProfile.cloningEnabled ? (
+                  <span className="px-2 py-0.5 rounded-full bg-accent/20 text-accent font-semibold text-[11px] border border-accent/30 flex items-center gap-1">
+                    <Sparkles size={11} />
+                    Cloned Voice: {localProfile.sampleName || 'User Sample'}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full bg-stone-800 text-stone-200 font-semibold text-[11px] border border-stone-700 flex items-center gap-1">
+                    <Volume2 size={11} className="text-accent" />
+                    {VOICE_DISPLAY_NAMES[localProfile.preset] || localProfile.preset}
+                  </span>
+                )}
+              </div>
+
+              {/* Mode switch pills */}
+              <div className="flex items-center gap-1.5 bg-stone-900 p-0.5 rounded-lg border border-stone-750">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileTab('presets')
+                    const next: SoundProfile = {
+                      preset: localProfile.preset || 'af_sarah',
+                      cloningEnabled: false,
+                      sampleName: localProfile.sampleName,
+                    }
+                    setLocalProfile(next)
+                    onSoundProfileChange?.(next)
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer',
+                    profileTab === 'presets' && !localProfile.cloningEnabled
+                      ? 'bg-accent text-white font-semibold shadow-xs'
+                      : 'text-stone-400 hover:text-white'
+                  )}
+                >
+                  AI Presets ({KOKORO_VOICES.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileTab('cloned')
+                    const firstSample = availableVoiceSamples.find(s => s.has_embedding)?.name || availableVoiceSamples[0]?.name || null
+                    const next: SoundProfile = {
+                      preset: localProfile.preset || 'af_sarah',
+                      cloningEnabled: true,
+                      sampleName: localProfile.sampleName || firstSample,
+                    }
+                    setLocalProfile(next)
+                    onSoundProfileChange?.(next)
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1',
+                    profileTab === 'cloned' || localProfile.cloningEnabled
+                      ? 'bg-accent text-white font-semibold shadow-xs'
+                      : 'text-stone-400 hover:text-white'
+                  )}
+                >
+                  <Sparkles size={10} />
+                  My Cloned Voice ({availableVoiceSamples.length})
+                </button>
+              </div>
             </div>
-            <a
-              href="/settings"
-              className="text-accent hover:underline font-semibold"
-            >
-              Change in Settings &rarr;
-            </a>
+
+            {/* Tab: AI Voice Presets */}
+            {profileTab === 'presets' && !localProfile.cloningEnabled && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 max-h-56 overflow-y-auto pr-1">
+                  {KOKORO_VOICES.map((v) => {
+                    const isSelected = localProfile.preset === v.id && !localProfile.cloningEnabled
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => {
+                          const next: SoundProfile = {
+                            preset: v.id,
+                            cloningEnabled: false,
+                            sampleName: localProfile.sampleName,
+                          }
+                          setLocalProfile(next)
+                          onSoundProfileChange?.(next)
+                        }}
+                        className={cn(
+                          'p-2 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between',
+                          isSelected
+                            ? 'border-accent bg-accent/20 ring-1 ring-accent'
+                            : 'border-stone-800 bg-stone-900/90 hover:border-stone-700 hover:bg-stone-800'
+                        )}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className={cn('font-semibold text-xs truncate', isSelected ? 'text-accent' : 'text-stone-200')}>
+                            {v.name}
+                          </span>
+                          {isSelected && <Check size={12} className="text-accent shrink-0" />}
+                        </div>
+                        <div className="flex items-center gap-1 mt-1 text-[10px] text-stone-400">
+                          <span>{v.accent === 'American' ? 'US' : 'UK'}</span>
+                          <span>{v.gender === 'female' ? '♀' : '♂'}</span>
+                          <span className="text-stone-500 truncate">• {v.tag.split('/')[0].trim()}</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Tab: Cloned Voice */}
+            {(profileTab === 'cloned' || localProfile.cloningEnabled) && (
+              <div className="space-y-2">
+                {availableVoiceSamples.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {availableVoiceSamples.map((s) => {
+                      const isSelected = localProfile.cloningEnabled && localProfile.sampleName === s.name
+                      return (
+                        <button
+                          key={s.name}
+                          type="button"
+                          onClick={() => {
+                            const next: SoundProfile = {
+                              preset: localProfile.preset,
+                              cloningEnabled: true,
+                              sampleName: s.name,
+                            }
+                            setLocalProfile(next)
+                            onSoundProfileChange?.(next)
+                          }}
+                          className={cn(
+                            'p-2.5 rounded-lg border text-left transition-all cursor-pointer flex items-center justify-between',
+                            isSelected
+                              ? 'border-accent bg-accent/20 ring-1 ring-accent'
+                              : 'border-stone-800 bg-stone-900/90 hover:border-stone-700'
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Mic size={13} className={isSelected ? 'text-accent' : 'text-stone-400'} />
+                            <div>
+                              <p className="text-xs font-semibold text-stone-200">{s.name}</p>
+                              <p className="text-[10px] text-stone-400">
+                                {s.has_embedding ? 'Acoustic embedding ready' : 'Raw audio sample'}
+                              </p>
+                            </div>
+                          </div>
+                          {isSelected && <Check size={14} className="text-accent shrink-0" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-stone-900 rounded-lg border border-stone-800 text-stone-400 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-stone-300">No recorded voice samples yet</p>
+                      <p className="text-[11px] text-stone-500 mt-0.5">
+                        Record a 10s voice sample with your microphone in Settings to clone your voice.
+                      </p>
+                    </div>
+                    <a
+                      href="/settings"
+                      className="inline-flex items-center gap-1 text-accent hover:underline font-semibold text-xs shrink-0"
+                    >
+                      Record in Settings &rarr;
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Quick Profile Actions Bar */}
+            <div className="flex items-center justify-between pt-1 border-t border-stone-800/60 text-[11px]">
+              <div className="flex items-center gap-2">
+                {onSetGlobalDefaultSoundProfile && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsSettingGlobal(true)
+                      try {
+                        await onSetGlobalDefaultSoundProfile(localProfile)
+                        setGlobalSavedFeedback(true)
+                        setTimeout(() => setGlobalSavedFeedback(false), 3000)
+                      } finally {
+                        setIsSettingGlobal(false)
+                      }
+                    }}
+                    disabled={isSettingGlobal}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition-colors cursor-pointer border border-stone-700 disabled:opacity-50"
+                    title="Save this sound profile as your global default in Settings"
+                  >
+                    {isSettingGlobal ? (
+                      <Loader2 size={11} className="animate-spin text-accent" />
+                    ) : globalSavedFeedback ? (
+                      <Check size={11} className="text-emerald-400" />
+                    ) : (
+                      <Sparkles size={11} className="text-accent" />
+                    )}
+                    <span>{globalSavedFeedback ? 'Saved as Global Default!' : 'Set as Global Default'}</span>
+                  </button>
+                )}
+              </div>
+
+              <a
+                href="/settings"
+                className="text-stone-400 hover:text-accent transition-colors font-medium text-[11px]"
+              >
+                Manage Voice Samples in Settings &rarr;
+              </a>
+            </div>
           </div>
 
-          {/* Hook Text Input */}
-          <div className="space-y-2">
+          {/* Hook Text Input & Voice Generation */}
+          <div className="space-y-2 pt-1 border-t border-stone-800/80">
             <label className="block text-stone-400 font-semibold text-[11px] uppercase tracking-wider">
               Hook Spoken Text
             </label>
@@ -1187,22 +1388,27 @@ export function ClipTimelineEditor({
                 <button
                   type="button"
                   onClick={onSaveHookText}
-                  className="px-3 py-1 text-xs rounded-md bg-stone-800 text-stone-200 hover:bg-stone-700 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 text-xs rounded-md bg-stone-800 text-stone-200 hover:bg-stone-700 transition-colors cursor-pointer border border-stone-700"
                 >
                   Save Text
                 </button>
                 <button
                   type="button"
-                  onClick={onSynthesizeVoice}
+                  onClick={() => onSynthesizeVoice(localProfile)}
                   disabled={isSynthesizing}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-md bg-accent text-white font-semibold hover:bg-accent-hover transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-accent text-white font-semibold hover:bg-accent-hover transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
                 >
                   {isSynthesizing ? (
-                    <Loader2 size={12} className="animate-spin" />
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      Synthesizing Audio...
+                    </>
                   ) : (
-                    <Mic size={12} />
+                    <>
+                      <Mic size={12} />
+                      Generate Speech with {localProfile.cloningEnabled ? (localProfile.sampleName || 'Cloned Voice') : (VOICE_DISPLAY_NAMES[localProfile.preset]?.split(' ')[0] || localProfile.preset)}
+                    </>
                   )}
-                  Generate Speech
                 </button>
               </div>
 
@@ -1210,8 +1416,9 @@ export function ClipTimelineEditor({
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-stone-400">Audio Preview:</span>
                   <audio
+                    key={`preview-audio-${clip.id}-${audioTimestamp || renderTimestamp || 0}`}
                     controls
-                    src={`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`}
+                    src={`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}&t=${audioTimestamp || renderTimestamp || 0}`}
                     className="h-7 w-48 invert hue-rotate-180"
                   />
                 </div>

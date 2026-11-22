@@ -26,7 +26,30 @@ from routers.ws import manager
 
 # Preset name mapping to Kokoro voice profiles
 VOICE_PRESET_MAP = {
-    "default": "af_bella",
+    "default": "af_sarah",
+    "af_heart": "af_sarah",
+    "heart": "af_sarah",
+    "af_sarah": "af_sarah",
+    "sarah": "af_sarah",
+    "af_bella": "af_bella",
+    "bella": "af_bella",
+    "af_nicole": "af_nicole",
+    "nicole": "af_nicole",
+    "af_sky": "af_sky",
+    "sky": "af_sky",
+    "am_adam": "am_adam",
+    "adam": "am_adam",
+    "am_michael": "am_michael",
+    "michael": "am_michael",
+    "bf_emma": "bf_emma",
+    "emma": "bf_emma",
+    "bf_isabella": "bf_isabella",
+    "isabella": "bf_isabella",
+    "bm_george": "bm_george",
+    "george": "bm_george",
+    "bm_lewis": "bm_lewis",
+    "lewis": "bm_lewis",
+    "af": "af",
     "professional": "am_michael",
     "casual": "af_nicole",
     "energetic": "af_sky",
@@ -125,11 +148,12 @@ class KokoroTTS:
 
     def synthesize(self, text: str, output_path: str | Path, voice_preset: str = "default", voice: str | None = None, speed: float = 1.0):
         """Synthesize text into a 24kHz normalized WAV file."""
-        chosen_voice = voice or voice_preset
-        voice_id = VOICE_PRESET_MAP.get(chosen_voice.lower(), chosen_voice if chosen_voice.startswith(("af_", "am_", "bf_", "bm_")) else "af_bella")
+        chosen_voice = (voice or voice_preset or "af_sarah").strip().lower()
+        voice_id = VOICE_PRESET_MAP.get(chosen_voice, chosen_voice if chosen_voice.startswith(("af", "am", "bf", "bm")) else "af_sarah")
         available = self.engine.get_voices()
         if voice_id not in available:
-            voice_id = available[0] if available else "af_bella"
+            # Check if mapped alias is in available or fall back to af_sarah / first available
+            voice_id = VOICE_PRESET_MAP.get(voice_id, "af_sarah" if "af_sarah" in available else (available[0] if available else "af_bella"))
 
         audio_samples, sample_rate = self.engine.create(
             text,

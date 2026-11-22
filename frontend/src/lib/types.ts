@@ -100,6 +100,49 @@ export interface VoiceSample {
   embedding_path?: string
 }
 
+export interface SoundProfile {
+  preset: string
+  cloningEnabled: boolean
+  sampleName: string | null
+}
+
+export interface VoiceOption {
+  id: string
+  name: string
+  accent: string
+  gender: 'female' | 'male'
+  desc: string
+  tag: string
+}
+
+export const KOKORO_VOICES: VoiceOption[] = [
+  { id: 'af_sarah', name: 'Sarah', accent: 'American', gender: 'female', desc: 'Warm & engaging storytelling', tag: 'Warm / Podcast' },
+  { id: 'af_bella', name: 'Bella', accent: 'American', gender: 'female', desc: 'Clear, bright & articulate delivery', tag: 'Clear / Viral' },
+  { id: 'af_nicole', name: 'Nicole', accent: 'American', gender: 'female', desc: 'Relaxed & casual conversational tone', tag: 'Casual / Vlog' },
+  { id: 'af_sky', name: 'Sky', accent: 'American', gender: 'female', desc: 'High-energy, fast-paced narration', tag: 'Energetic' },
+  { id: 'am_adam', name: 'Adam', accent: 'American', gender: 'male', desc: 'Confident, direct professional presenter', tag: 'Presenter' },
+  { id: 'am_michael', name: 'Michael', accent: 'American', gender: 'male', desc: 'Deep, grounded & authoritative tone', tag: 'Deep Voice' },
+  { id: 'bf_emma', name: 'Emma', accent: 'British', gender: 'female', desc: 'Crisp, articulate British narrator', tag: 'British Female' },
+  { id: 'bf_isabella', name: 'Isabella', accent: 'British', gender: 'female', desc: 'Gentle, warm British storytelling', tag: 'British Story' },
+  { id: 'bm_george', name: 'George', accent: 'British', gender: 'male', desc: 'Classic, refined British documentary tone', tag: 'British Narrator' },
+  { id: 'bm_lewis', name: 'Lewis', accent: 'British', gender: 'male', desc: 'Dynamic, modern British presenter', tag: 'British Dynamic' },
+]
+
+export const VOICE_DISPLAY_NAMES: Record<string, string> = {
+  af_sarah: 'Sarah (Warm American)',
+  af_heart: 'Sarah (Warm American)',
+  af_bella: 'Bella (Clear American)',
+  af_nicole: 'Nicole (Casual American)',
+  af_sky: 'Sky (Energetic American)',
+  am_adam: 'Adam (Confident American)',
+  am_michael: 'Michael (Deep American)',
+  bf_emma: 'Emma (Crisp British)',
+  bf_isabella: 'Isabella (Gentle British)',
+  bm_george: 'George (Classic British)',
+  bm_lewis: 'Lewis (Dynamic British)',
+  af: 'Default Neutral',
+}
+
 // WebSocket message types
 export type WSMessage =
   | { type: 'progress'; job_id: string; phase: string; progress: number; message: string; clip_index?: number; clip_total?: number }
