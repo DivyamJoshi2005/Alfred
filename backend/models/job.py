@@ -10,6 +10,11 @@ class JobCreate(BaseModel):
     video_path: str = Field(..., description="Absolute path to the source video file")
 
 
+class YouTubeIngestCreate(BaseModel):
+    """Request to ingest and process a video directly from a YouTube URL."""
+    url: str = Field(..., description="YouTube video or Shorts URL")
+
+
 class JobResponse(BaseModel):
     """Job data returned from API."""
     id: str

@@ -22,6 +22,10 @@ export const jobs = {
     method: 'POST',
     body: JSON.stringify({ video_path: videoPath }),
   }),
+  ingestYoutube: (url: string) => request<import('./types').Job>('/api/jobs/youtube', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  }),
   upload: (file: File, onProgress?: (pct: number) => void): Promise<import('./types').Job> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()

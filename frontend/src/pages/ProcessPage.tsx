@@ -16,10 +16,19 @@ import {
   Activity,
   Check,
   Eye,
+  Download,
 } from 'lucide-react'
 import { jobs as jobsApi } from '../lib/api'
 import type { Job, LocalVideo, WSMessage } from '../lib/types'
 import { formatSize, timeAgo, cn } from '../lib/utils'
+
+function YouTubeIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+    </svg>
+  )
+}
 
 interface ProcessPageProps {
   wsEvents: WSMessage[]
@@ -34,6 +43,7 @@ interface ProgressState {
 }
 
 const ACTIVE_STATUSES = [
+  'downloading',
   'queued', 
   'processing', 
   'transcribing', 
@@ -65,6 +75,11 @@ export function ProcessPage({ wsEvents }: ProcessPageProps) {
   const [filter, setFilter] = useState<'all' | 'processing' | 'completed'>('all')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [jobProgressMap, setJobProgressMap] = useState<Record<string, ProgressState>>({})
+
+  // Ingestion Mode Tabs
+  const [ingestTab, setIngestTab] = useState<'upload' | 'youtube' | 'path'>('upload')
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [submittingYoutube, setSubmittingYoutube] = useState(false)
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -199,12 +214,39 @@ export function ProcessPage({ wsEvents }: ProcessPageProps) {
     }
   }
 
+  const handleYoutubeIngest = async () => {
+    const trimmed = youtubeUrl.trim()
+    if (!trimmed) {
+      setErrorMsg('Please paste a YouTube link (e.g. https://www.youtube.com/watch?v=... or https://youtu.be/...)')
+      return
+    }
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      setErrorMsg('Please enter a valid link starting with https://')
+      return
+    }
+
+    setErrorMsg(null)
+    setSubmittingYoutube(true)
+    try {
+      const newJob = await jobsApi.ingestYoutube(trimmed)
+      setYoutubeUrl('')
+      setJobsList(prev => [newJob, ...prev.filter(j => j.id !== newJob.id)])
+      await fetchJobs()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not fetch video from YouTube'
+      setErrorMsg(msg)
+    } finally {
+      setSubmittingYoutube(false)
+    }
+  }
+
   const activeJob = jobsList.find(j => ACTIVE_STATUSES.includes(j.status))
   const activeProgress = activeJob ? jobProgressMap[activeJob.id] : undefined
 
   // Determine current active pipeline stage index (0 to 4)
   const getStageIndex = (status: string, phase?: string) => {
     const p = phase || status
+    if (p === 'downloading') return -1
     if (p === 'transcribing') return 0
     if (p === 'analyzing') return 1
     if (p === 'generating_hooks') return 2
@@ -264,6 +306,17 @@ export function ProcessPage({ wsEvents }: ProcessPageProps) {
               <p className="text-[11px] text-text-muted font-medium">Estimated completion in ~1-2 min</p>
             </div>
           </div>
+
+          {/* Downloading state banner */}
+          {activeJob.status === 'downloading' && (
+            <div className="flex items-center gap-3 p-3.5 rounded-xl bg-red-50 border border-red-200/80 text-xs text-red-900 font-medium animate-pulse">
+              <Download size={18} className="text-red-600 shrink-0" />
+              <div className="flex-1">
+                <span className="font-semibold text-red-950">Downloading video from YouTube (yt-dlp): </span>
+                {activeProgress?.message || 'Transferring video file directly to local storage...'}
+              </div>
+            </div>
+          )}
 
           {/* Large Animated Progress Bar */}
           <div className="space-y-1.5">
@@ -329,38 +382,49 @@ export function ProcessPage({ wsEvents }: ProcessPageProps) {
 
       {/* Main Input Card */}
       <div className="bg-surface rounded-xl border border-border p-6 shadow-xs space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-text mb-2">
-            Select or enter video file
-          </label>
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <input
-                type="text"
-                value={videoPath}
-                onChange={(e) => setVideoPath(e.target.value)}
-                placeholder="/path/to/podcast_episode_12.mp4 or select from discovered list"
-                className="w-full px-4 py-2.5 text-sm bg-stone-50/60 border border-border rounded-lg text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
-              />
-            </div>
-            <button
-              onClick={() => handleStartProcessing(videoPath)}
-              disabled={submitting || !videoPath.trim()}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  Starting...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={16} />
-                  Start Processing
-                </>
-              )}
-            </button>
-          </div>
+        {/* Ingest Mode Tabs */}
+        <div className="flex flex-wrap items-center gap-2 pb-4 border-b border-border">
+          <button
+            type="button"
+            onClick={() => setIngestTab('upload')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all",
+              ingestTab === 'upload'
+                ? "bg-accent text-accent-text shadow-xs"
+                : "bg-stone-100 text-text-secondary hover:text-text hover:bg-stone-200/70"
+            )}
+          >
+            <Upload size={14} />
+            Upload Video File
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIngestTab('youtube')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all",
+              ingestTab === 'youtube'
+                ? "bg-red-600 text-white shadow-xs"
+                : "bg-stone-100 text-text-secondary hover:text-red-600 hover:bg-red-50"
+            )}
+          >
+            <YouTubeIcon className="w-3.5 h-3.5" />
+            Import from YouTube Link
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIngestTab('path')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all",
+              ingestTab === 'path'
+                ? "bg-accent text-accent-text shadow-xs"
+                : "bg-stone-100 text-text-secondary hover:text-text hover:bg-stone-200/70"
+            )}
+          >
+            <FolderSearch size={14} />
+            Local Workspace Path
+          </button>
         </div>
 
         {errorMsg && (
@@ -370,104 +434,209 @@ export function ProcessPage({ wsEvents }: ProcessPageProps) {
           </div>
         )}
 
-        {/* Hidden File Input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
+        {/* 1. Drag and Drop Upload Tab */}
+        {ingestTab === 'upload' && (
+          <div className="space-y-4">
+            {/* Hidden File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
 
-        {/* Drag and Drop Box */}
-        <div
-          onClick={() => {
-            if (uploadProgress === null) fileInputRef.current?.click()
-          }}
-          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-          onDragLeave={() => setDragActive(false)}
-          onDrop={handleDrop}
-          className={cn(
-            "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer group",
-            dragActive 
-              ? "border-accent bg-accent-light/30 scale-[1.01]" 
-              : "border-border-strong/70 hover:border-accent bg-stone-50/50 hover:bg-stone-50"
-          )}
-        >
-          {uploadProgress !== null ? (
-            <div className="space-y-3 py-3 max-w-sm mx-auto">
-              <Loader2 size={28} className="animate-spin text-accent mx-auto" />
-              <div>
-                <p className="text-sm font-semibold text-text truncate">
-                  Uploading {uploadingFileName}...
-                </p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  {uploadProgress}% transferred to Alfred Studio
-                </p>
-              </div>
-              <div className="w-full bg-stone-200 rounded-full h-2 overflow-hidden shadow-inner">
-                <div
-                  className="bg-accent h-2 rounded-full transition-all duration-200 ease-out"
-                  style={{ width: `${Math.max(6, uploadProgress)}%` }}
-                />
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="w-12 h-12 mx-auto rounded-full bg-accent-light text-accent flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <Upload size={22} strokeWidth={1.8} />
-              </div>
-              <p className="text-sm font-semibold text-text">
-                Drop your video file here, or <span className="text-accent underline underline-offset-2">browse files</span>
-              </p>
-              <p className="text-xs text-text-muted mt-1">
-                Supports MP4, MOV, MKV, AVI, and WebM (any length or size)
-              </p>
-            </>
-          )}
-        </div>
-
-        {/* Local Discovered Videos */}
-        {localVideos.length > 0 && (
-          <div className="pt-2">
-            <div className="flex items-center gap-2 mb-3">
-              <FolderSearch size={16} className="text-text-secondary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                Discovered in your workspace ({localVideos.length})
-              </h3>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {localVideos.map((vid, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => setVideoPath(vid.path)}
-                  className={cn(
-                    "flex flex-col justify-between p-3.5 rounded-lg border text-left transition-all cursor-pointer group",
-                    videoPath === vid.path
-                      ? "border-accent bg-accent-light/20 ring-1 ring-accent"
-                      : "border-border bg-white hover:border-stone-400 hover:bg-stone-50/50 shadow-xs"
-                  )}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <FileVideo size={18} className="text-accent shrink-0 mt-0.5" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-text truncate group-hover:text-accent transition-colors">
-                        {vid.name}
-                      </p>
-                      <p className="text-xs text-text-muted mt-0.5 truncate">
-                        {vid.folder}
-                      </p>
-                    </div>
+            {/* Drag and Drop Box */}
+            <div
+              onClick={() => {
+                if (uploadProgress === null) fileInputRef.current?.click()
+              }}
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={handleDrop}
+              className={cn(
+                "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer group",
+                dragActive 
+                  ? "border-accent bg-accent-light/30 scale-[1.01]" 
+                  : "border-border-strong/70 hover:border-accent bg-stone-50/50 hover:bg-stone-50"
+              )}
+            >
+              {uploadProgress !== null ? (
+                <div className="space-y-3 py-3 max-w-sm mx-auto">
+                  <Loader2 size={28} className="animate-spin text-accent mx-auto" />
+                  <div>
+                    <p className="text-sm font-semibold text-text truncate">
+                      Uploading {uploadingFileName}...
+                    </p>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {uploadProgress}% transferred to Alfred Studio
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/60 text-xs text-text-secondary">
-                    <span>{formatSize(vid.size_mb)}</span>
-                    <span className="text-accent font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                      Select video <ArrowRight size={12} />
-                    </span>
+                  <div className="w-full bg-stone-200 rounded-full h-2 overflow-hidden shadow-inner">
+                    <div
+                      className="bg-accent h-2 rounded-full transition-all duration-200 ease-out"
+                      style={{ width: `${Math.max(6, uploadProgress)}%` }}
+                    />
                   </div>
                 </div>
-              ))}
+              ) : (
+                <>
+                  <div className="w-12 h-12 mx-auto rounded-full bg-accent-light text-accent flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Upload size={22} strokeWidth={1.8} />
+                  </div>
+                  <p className="text-sm font-semibold text-text">
+                    Drop your video file here, or <span className="text-accent underline underline-offset-2">browse files</span>
+                  </p>
+                  <p className="text-xs text-text-muted mt-1">
+                    Supports MP4, MOV, MKV, AVI, and WebM (any length or size)
+                  </p>
+                </>
+              )}
             </div>
+          </div>
+        )}
+
+        {/* 2. YouTube Ingest Tab */}
+        {ingestTab === 'youtube' && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-text mb-1">
+                Paste YouTube Video or Shorts URL
+              </label>
+              <p className="text-xs text-text-muted mb-3">
+                Paste any link from YouTube. Alfred downloads the highest quality MP4 with audio using <span className="font-semibold text-text">yt-dlp</span> directly onto your machine, then automatically runs the 6-stage AI pipeline.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-red-600">
+                    <YouTubeIcon className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="url"
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !submittingYoutube && youtubeUrl.trim()) {
+                        handleYoutubeIngest()
+                      }
+                    }}
+                    placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
+                    className="w-full pl-10 pr-4 py-2.5 text-sm bg-stone-50/60 border border-border rounded-lg text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleYoutubeIngest}
+                  disabled={submittingYoutube || !youtubeUrl.trim()}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                >
+                  {submittingYoutube ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Starting Download...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Download & Process
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-50/50 border border-red-200/60 text-xs text-stone-700">
+              <Sparkles size={16} className="text-red-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold text-stone-900">100% Automatic Video Slicing</p>
+                <p className="text-stone-600 leading-relaxed">
+                  As soon as the download finishes, Alfred immediately transcribes speech, scores the audio energy and visual movement to find the top moments, writes viral opening hooks, and exports 1080×1920 vertical shorts.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 3. Workspace Path Tab */}
+        {ingestTab === 'path' && (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-text mb-2">
+                Enter local video file path
+              </label>
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={videoPath}
+                    onChange={(e) => setVideoPath(e.target.value)}
+                    placeholder="/path/to/podcast_episode_12.mp4 or select from discovered list"
+                    className="w-full px-4 py-2.5 text-sm bg-stone-50/60 border border-border rounded-lg text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
+                  />
+                </div>
+                <button
+                  onClick={() => handleStartProcessing(videoPath)}
+                  disabled={submitting || !videoPath.trim()}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-text text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      Start Processing
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Local Discovered Videos */}
+            {localVideos.length > 0 && (
+              <div className="pt-2 border-t border-border/70">
+                <div className="flex items-center gap-2 mb-3">
+                  <FolderSearch size={16} className="text-text-secondary" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                    Discovered in your workspace ({localVideos.length})
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {localVideos.map((vid, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => setVideoPath(vid.path)}
+                      className={cn(
+                        "flex flex-col justify-between p-3.5 rounded-lg border text-left transition-all cursor-pointer group",
+                        videoPath === vid.path
+                          ? "border-accent bg-accent-light/20 ring-1 ring-accent"
+                          : "border-border bg-white hover:border-stone-400 hover:bg-stone-50/50 shadow-xs"
+                      )}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <FileVideo size={18} className="text-accent shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-text truncate group-hover:text-accent transition-colors">
+                            {vid.name}
+                          </p>
+                          <p className="text-xs text-text-muted mt-0.5 truncate">
+                            {vid.folder}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/60 text-xs text-text-secondary">
+                        <span>{formatSize(vid.size_mb)}</span>
+                        <span className="text-accent font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                          Select video <ArrowRight size={12} />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

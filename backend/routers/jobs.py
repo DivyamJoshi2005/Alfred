@@ -4,7 +4,7 @@ import uuid
 import asyncio
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
-from models import JobCreate, JobResponse, JobDetailResponse, ClipResponse
+from models import JobCreate, YouTubeIngestCreate, JobResponse, JobDetailResponse, ClipResponse
 from database import get_db
 from config import SUPPORTED_VIDEO_EXTENSIONS
 
@@ -146,6 +146,152 @@ async def upload_and_create_job(
         # Trigger pipeline in background
         from pipeline.orchestrator import run_pipeline
         background_tasks.add_task(run_pipeline, job_id)
+
+        return JobResponse(
+            id=job["id"],
+            video_path=job["video_path"],
+            video_name=job["video_name"],
+            status=job["status"],
+            created_at=job["created_at"],
+            updated_at=job["updated_at"],
+            error_msg=job["error_msg"],
+        )
+    finally:
+        await db.close()
+
+
+async def download_youtube_video(url: str, output_dir: Path, progress_callback=None) -> tuple[str, str]:
+    """Download video from YouTube using yt-dlp, merging into high-quality MP4."""
+    import yt_dlp
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    outtmpl = str(output_dir / "%(title).150B [%(id)s].%(ext)s")
+
+    loop = asyncio.get_running_loop()
+
+    def _progress_hook(d):
+        if progress_callback and d.get("status") == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            downloaded = d.get("downloaded_bytes") or 0
+            if total > 0:
+                pct = round((downloaded / total) * 100, 1)
+                loop.call_soon_threadsafe(progress_callback, pct)
+
+    ydl_opts = {
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
+        "outtmpl": outtmpl,
+        "noplaylist": True,
+        "merge_output_format": "mp4",
+        "progress_hooks": [_progress_hook] if progress_callback else [],
+        "quiet": True,
+        "no_warnings": True,
+    }
+
+    def _sync_download():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            target_file = ydl.prepare_filename(info)
+            mp4_file = Path(target_file).with_suffix(".mp4")
+            title = info.get("title") or mp4_file.stem
+            if mp4_file.exists():
+                return str(mp4_file), title
+            elif Path(target_file).exists():
+                return str(target_file), title
+            else:
+                vid_id = info.get("id")
+                matches = list(output_dir.glob(f"*{vid_id}*"))
+                if matches:
+                    return str(matches[0]), title
+                raise RuntimeError("Downloaded video file could not be located on disk")
+
+    return await asyncio.to_thread(_sync_download)
+
+
+async def _process_youtube_job(job_id: str, url: str):
+    """Background task: download YouTube video via yt-dlp then run AI pipeline."""
+    from config import ALFRED_PROJECTS_DIR
+    from routers.ws import manager
+    from pipeline.orchestrator import run_pipeline
+
+    uploads_dir = ALFRED_PROJECTS_DIR / "uploads"
+
+    try:
+        await manager.send_notification("info", "📥 Connecting to YouTube and starting download...")
+        await manager.send_progress(job_id, "downloading", 10.0, "Fetching video metadata via yt-dlp...")
+
+        def on_dl_progress(pct: float):
+            asyncio.create_task(
+                manager.send_progress(
+                    job_id,
+                    "downloading",
+                    max(10.0, min(95.0, pct)),
+                    f"Downloading video: {pct}% complete",
+                )
+            )
+
+        video_path, video_title = await download_youtube_video(url, uploads_dir, on_dl_progress)
+        clean_name = Path(video_path).stem
+
+        db = await get_db()
+        try:
+            await db.execute(
+                "UPDATE jobs SET video_path = ?, video_name = ?, status = 'queued', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (video_path, clean_name, job_id),
+            )
+            await db.commit()
+        finally:
+            await db.close()
+
+        await manager.send_notification("info", f"✅ Downloaded '{clean_name}'. Starting AI processing pipeline...")
+        await manager.send_progress(job_id, "downloading", 100.0, f"Downloaded '{clean_name}', starting transcription...")
+
+        # Run 6-stage AI pipeline
+        await run_pipeline(job_id)
+
+    except Exception as e:
+        error_msg = f"YouTube download failed: {str(e)}"
+        print(f"[YouTubeIngest] Error for job {job_id}: {error_msg}")
+        db = await get_db()
+        try:
+            await db.execute(
+                "UPDATE jobs SET status = 'failed', error_msg = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (error_msg, job_id),
+            )
+            await db.commit()
+        finally:
+            await db.close()
+        await manager.send_job_status(job_id, "failed", error=error_msg)
+        await manager.send_notification("error", f"❌ {error_msg}")
+
+
+@router.post("/youtube", response_model=JobResponse, status_code=201)
+async def ingest_from_youtube(
+    body: YouTubeIngestCreate,
+    background_tasks: BackgroundTasks,
+):
+    """Ingest a video directly from a YouTube link, download it via yt-dlp, and start pipeline."""
+    url = body.url.strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid URL. Please enter a valid YouTube link starting with https://",
+        )
+
+    job_id = str(uuid.uuid4())
+    display_name = f"YouTube: {url[:35]}..."
+
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO jobs (id, video_path, video_name, status) VALUES (?, '', ?, 'downloading')",
+            (job_id, display_name),
+        )
+        await db.commit()
+
+        row = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        job = await row.fetchone()
+
+        background_tasks.add_task(_process_youtube_job, job_id, url)
 
         return JobResponse(
             id=job["id"],

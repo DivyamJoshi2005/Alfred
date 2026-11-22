@@ -54,6 +54,7 @@ If you have a 1-hour podcast, conference keynote, coding tutorial, or university
 4. You have to manually log into social media and upload each file.
 
 **Alfred automates this entire pipeline locally on your machine:**
+- **Flexible video ingestion**: Drop a local video file (MP4, MOV, MKV), import any public YouTube video link directly (via built-in `yt-dlp`), or pick a file from your local workspace.
 - **Finds the best moments** by analyzing where the speaker gets energetic, where people laugh or applaud, and where visual movement happens.
 - **Protects your slides and code** by fitting the full presentation in the vertical frame with a clean blurred background, or splitting the screen between the speaker and the slides.
 - **Writes & speaks viral opening hooks** using small local AI models so you grab the viewer's attention before they scroll away.
@@ -258,8 +259,13 @@ sequenceDiagram
     participant Deck as Editorial Console (/review)
     participant Dist as Distribution Engine
 
-    Creator->>Ingest: Upload 16:9 Master Video (MP4 / MOV / MKV)
-    Ingest->>Server: POST /api/jobs/upload
+    Creator->>Ingest: Ingest 16:9 Master Video (Local File or YouTube Link)
+    alt YouTube Link Import
+        Ingest->>Server: POST /api/jobs/youtube {"url": "https://youtube.com/watch?v=..."}
+        Server->>Server: Stream yt-dlp download progress (0% - 100%)
+    else File Upload
+        Ingest->>Server: POST /api/jobs/upload (multipart video file)
+    end
     Server-->>Ingest: Job created (ID) + WebSocket connection
     
     rect rgb(20, 26, 38)
@@ -741,6 +747,7 @@ CREATE TABLE social_accounts (
 | Method | Endpoint | Request Body | Description |
 |---|---|---|---|
 | `POST` | `/api/jobs/upload` | Multipart: `file: UploadFile`, `clip_count: int` | Ingest long-form video file and trigger background pipeline |
+| `POST` | `/api/jobs/youtube` | JSON: `{"url": str, "clip_count": int}` | Download video directly from a YouTube link using `yt-dlp` and trigger background pipeline |
 | `GET` | `/api/jobs` | — | List all historical ingestion jobs |
 | `GET` | `/api/jobs/{job_id}` | — | Retrieve job details, telemetry status, and clip list |
 | `DELETE`| `/api/jobs/{job_id}` | — | Delete job and remove associated video assets from disk |

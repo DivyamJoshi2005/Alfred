@@ -45,8 +45,9 @@
 
 ## 💡 What Does the Backend Do?
 
-When you drop a horizontal 16:9 video file (keynote, podcast, coding tutorial, product launch) into Alfred, the backend coordinates all compute-intensive background work on your local machine:
+When you drop a horizontal 16:9 video file into Alfred or paste a YouTube video link, the backend coordinates all compute-intensive background work on your local machine:
 
+0. **Ingests video effortlessly**: Accepts local video uploads or downloads any public YouTube video via built-in `yt-dlp` with real-time download percentage telemetry.
 1. **Extracts high-fidelity audio** into a clean 16kHz mono WAV format without re-encoding video.
 2. **Transcribes speech** into word-level timestamps using `faster-whisper` and filters out ambient noise with `Silero VAD`.
 3. **Discovers high-retention highlights** (30–60s) by combining visual motion energy (Farneback dense optical flow) and acoustic volume spikes (laughter, applause, energetic delivery).
@@ -548,6 +549,7 @@ The backend exposes a clean REST API documented interactively via Swagger UI at 
 | Method | Endpoint | Request Payload / Query | Description |
 |---|---|---|---|
 | `POST` | `/api/jobs/upload` | Multipart form `file: UploadFile` | Ingests video file, writes to disk, and initiates asynchronous 6-stage AI pipeline. |
+| `POST` | `/api/jobs/youtube` | JSON: `{"url": str, "clip_count": int}` | Downloads video from YouTube link via `yt-dlp` and triggers background pipeline. |
 | `GET` | `/api/jobs` | None | Returns list of all historical video processing jobs. |
 | `GET` | `/api/jobs/{id}` | Path param `id: str` | Retrieves detailed job status, progress percentage, and extracted clips. |
 | `GET` | `/api/clips/job/{job_id}` | Path param `job_id: str` | Fetches all clips extracted for a specific job with scores and storyboard frame URLs. |

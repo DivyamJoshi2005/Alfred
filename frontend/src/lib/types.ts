@@ -1,6 +1,7 @@
 // API types matching the backend Pydantic models
 
 export type JobStatus = 
+  | 'downloading'
   | 'queued' 
   | 'processing' 
   | 'transcribing' 
