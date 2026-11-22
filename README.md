@@ -72,34 +72,41 @@ Alfred combines a reactive **React 19 + TypeScript** frontend with an asynchrono
 
 ```mermaid
 flowchart TD
+    classDef client fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef server fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef ai fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
+    classDef media fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+    classDef storage fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+    classDef social fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
+
     subgraph Client ["Frontend & Desktop Client (Tauri v2 + React 19)"]
-        UI["Studio Atelier Console\n(Zustand + React Router)"]
-        WSClient["WebSocket Telemetry Client"]
-        Sequencer["NLE Multi-Track Sequencer Deck\n(V1 Video + A1 Audio Track)"]
-        Player["Dual 16:9 / 9:16 Synchronized Viewport"]
-        Recorder["In-Browser Voice Reference Studio"]
+        UI["Studio Atelier Console\n(Zustand + React Router)"]:::client
+        WSClient["WebSocket Telemetry Client"]:::client
+        Sequencer["NLE Multi-Track Sequencer Deck\n(V1 Video + A1 Audio Track)"]:::client
+        Player["Dual 16:9 / 9:16 Synchronized Viewport"]:::client
+        Recorder["In-Browser Voice Reference Studio"]:::client
     end
 
     subgraph Server ["Backend Daemon (FastAPI + Asyncio :8741)"]
-        API["REST & WebSocket Gateway"]
-        DB[("SQLite Embedded DB\nWAL Mode")]
-        Scheduler["Background Dispatch Worker\n(30s Heartbeat Loop)"]
+        API["REST & WebSocket Gateway"]:::server
+        DB[("SQLite Embedded DB\nWAL Mode")]:::storage
+        Scheduler["Background Dispatch Worker\n(30s Heartbeat Loop)"]:::server
     end
 
     subgraph Pipeline ["Local AI & Video Processing Pipeline"]
-        Demux["Audio Demuxer (16kHz Mono WAV)"]
-        Whisper["Transcriber (faster-whisper + Silero VAD)"]
-        Analyzer["Multimodal Analyzer\n(Optical Flow + Audio RMS Spikes)"]
-        Llama["Llama 3.2 1B Instruct GGUF\n(Viral Hook & Headline Writer)"]
-        TTS["Kokoro-82M ONNX + OpenVoice v2"]
-        SmartCrop["Layout Engine (Presentation Fit / Split / Face Focus)"]
-        Assembler["FFmpeg 9 Precision Assembler\n(Filters, Master Ducking, Safe Badges)"]
+        Demux["Audio Demuxer (16kHz Mono WAV)"]:::media
+        Whisper["Transcriber (faster-whisper + Silero VAD)"]:::ai
+        Analyzer["Multimodal Analyzer\n(Optical Flow + Audio RMS Spikes)"]:::ai
+        Llama["Llama 3.2 1B Instruct GGUF\n(Viral Hook & Headline Writer)"]:::ai
+        TTS["Kokoro-82M ONNX + OpenVoice v2"]:::ai
+        SmartCrop["Layout Engine (Presentation Fit / Split / Face Focus)"]:::media
+        Assembler["FFmpeg 9 Precision Assembler\n(Filters, Master Ducking, Safe Badges)"]:::media
     end
 
     subgraph Distribution ["Stealth Browser Distribution Engine"]
-        Playwright["Stealth Playwright Automation\n(Self-Healing Chromium Shell)"]
-        Sessions["Persistent Cookie Profiles\n(~/.alfred/chromium_profiles)"]
-        Uploader["Platform Uploaders (YouTube Shorts, IG Reels, X)"]
+        Playwright["Stealth Playwright Automation\n(Self-Healing Chromium Shell)"]:::social
+        Sessions["Persistent Cookie Profiles\n(~/.alfred/chromium_profiles)"]:::storage
+        Uploader["Platform Uploaders (YouTube Shorts, IG Reels, X)"]:::social
     end
 
     UI -->|Job Ingestion & Control| API
@@ -120,38 +127,45 @@ The backend daemon coordinates pipeline execution asynchronously without blockin
 
 ```mermaid
 flowchart TD
+    classDef gateway fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef worker fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef ai fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
+    classDef media fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+    classDef db fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+    classDef social fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
+
     subgraph Inbound ["Inbound Gateway (:8741)"]
-        HTTP["FastAPI REST API\n(/api/jobs, /api/clips, /api/schedule, /api/accounts)"]
-        WS["WebSocket Telemetry Gateway\n(ws://127.0.0.1:8741/ws)"]
+        HTTP["FastAPI REST API\n(/api/jobs, /api/clips, /api/schedule, /api/accounts)"]:::gateway
+        WS["WebSocket Telemetry Gateway\n(ws://127.0.0.1:8741/ws)"]:::gateway
     end
 
     subgraph Workers ["Asynchronous Background Workers"]
-        Orchestrator["Pipeline Orchestrator\n(6-Stage Automated AI Extraction)"]
-        ReRenderer["Fast Re-Render Engine\n(Targeted FFmpeg seek slices in ~15s)"]
-        Dispatcher["Scheduler Heartbeat Worker\n(Evaluates due queue every 30-60s)"]
+        Orchestrator["Pipeline Orchestrator\n(6-Stage Automated AI Extraction)"]:::worker
+        ReRenderer["Fast Re-Render Engine\n(Targeted FFmpeg seek slices in ~15s)"]:::worker
+        Dispatcher["Scheduler Heartbeat Worker\n(Evaluates due queue every 30-60s)"]:::worker
     end
 
     subgraph PipelineStages ["6-Stage Local AI Processing Engine"]
-        S1["Stage 1: FFmpeg Audio Demux (16kHz Mono WAV)"]
-        S2["Stage 2: faster-whisper Speech-to-Text + Silero VAD"]
-        S3["Stage 3: Multimodal Optical Flow & Audio RMS Spike Analyzer"]
-        S4["Stage 4: Llama 3.2 1B Instruct Viral Hook & Badge Writer"]
-        S5["Stage 5: Kokoro-82M ONNX Synthesis + OpenVoice v2 Cloner"]
-        S6["Stage 6: FFmpeg 9 Filtergraph Assembler & Master Ducking"]
+        S1["Stage 1: FFmpeg Audio Demux (16kHz Mono WAV)"]:::media
+        S2["Stage 2: faster-whisper Speech-to-Text + Silero VAD"]:::ai
+        S3["Stage 3: Multimodal Optical Flow & Audio RMS Spike Analyzer"]:::ai
+        S4["Stage 4: Llama 3.2 1B Instruct Viral Hook & Badge Writer"]:::ai
+        S5["Stage 5: Kokoro-82M ONNX Synthesis + OpenVoice v2 Cloner"]:::ai
+        S6["Stage 6: FFmpeg 9 Filtergraph Assembler & Master Ducking"]:::media
     end
 
     subgraph Storage ["SQLite Persistence (WAL Mode)"]
-        T_Jobs[("jobs & transcripts")]
-        T_Clips[("clips (scores, timecodes, modes, storyboards)")]
-        T_Schedule[("scheduled_posts (ISO 8601 UTC, status, attempts)")]
-        T_Accounts[("social_accounts (persistent Chromium profiles)")]
+        T_Jobs[("jobs & transcripts")]:::db
+        T_Clips[("clips (scores, timecodes, modes, storyboards)")]:::db
+        T_Schedule[("scheduled_posts (ISO 8601 UTC, status, attempts)")]:::db
+        T_Accounts[("social_accounts (persistent Chromium profiles)")]:::db
     end
 
     subgraph DistributionEngine ["Stealth Browser Distribution Engine"]
-        Playwright["Stealth Playwright Chromium Context\n(Anti-bot evasion, humanized cadence)"]
-        YouTube["YouTube Studio Shorts"]
-        Instagram["Instagram Reels"]
-        Twitter["X / Twitter Video"]
+        Playwright["Stealth Playwright Chromium Context\n(Anti-bot evasion, humanized cadence)"]:::social
+        YouTube["YouTube Studio Shorts"]:::social
+        Instagram["Instagram Reels"]:::social
+        Twitter["X / Twitter Video"]:::social
     end
 
     HTTP -->|1. Submit Video File| Orchestrator
@@ -184,24 +198,29 @@ The frontend is built with React 19, TypeScript, and Tailwind CSS, featuring an 
 
 ```mermaid
 flowchart LR
+    classDef page fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef state fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef deck fill:#18181b,stroke:#f59e0b,stroke-width:1.5px,color:#fef3c7;
+    classDef audio fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+
     subgraph Pages ["Studio Atelier Pages (React 19)"]
-        ProcessPage["ProcessPage\n(Video Drag & Drop, Live WS Telemetry)"]
-        ReviewPage["ReviewPage\n(Dual Viewport & NLE Editorial Console)"]
-        CalendarPage["CalendarPage\n(Broadcast Queue, Live Status & Retry Deck)"]
-        SettingsPage["SettingsPage\n(Model Readiness, Accounts, Voice Recorder)"]
+        ProcessPage["ProcessPage\n(Video Drag & Drop, Live WS Telemetry)"]:::page
+        ReviewPage["ReviewPage\n(Dual Viewport & NLE Editorial Console)"]:::page
+        CalendarPage["CalendarPage\n(Broadcast Queue, Live Status & Retry Deck)"]:::page
+        SettingsPage["SettingsPage\n(Model Readiness, Accounts, Voice Recorder)"]:::page
     end
 
     subgraph StateAndNet ["State Management & API Layer"]
-        WSContext["WebSocketContext\n(Auto-reconnect & real-time telemetry)"]
-        ApiClient["Typed REST API Client\n(lib/api.ts)"]
-        AudioMixer["In-Browser Audio Ducking Mixer\n(Dynamic volume attenuation to 15%)"]
+        WSContext["WebSocketContext\n(Auto-reconnect & real-time telemetry)"]:::state
+        ApiClient["Typed REST API Client\n(lib/api.ts)"]:::state
+        AudioMixer["In-Browser Audio Ducking Mixer\n(Dynamic volume attenuation to 15%)"]:::audio
     end
 
     subgraph ModularDeck ["Modular NLE Studio Components"]
-        TimelineEditor["ClipTimelineEditor\n(Timecode ruler, V1 Video & A1 Audio tracks)"]
-        JogDeck["Hardware-Style Jog Deck\n(±1f = 0.033s, ±1s, ±5s micro-nudges)"]
-        DualPlayer["Synchronized Dual Viewport\n(16:9 Master vs 9:16 Smartphone Cutdown)"]
-        VoiceStudio["In-Browser Mic Voice Studio\n(MediaRecorder -> 24kHz Reference WAV)"]
+        TimelineEditor["ClipTimelineEditor\n(Timecode ruler, V1 Video & A1 Audio tracks)"]:::deck
+        JogDeck["Hardware-Style Jog Deck\n(±1f = 0.033s, ±1s, ±5s micro-nudges)"]:::deck
+        DualPlayer["Synchronized Dual Viewport\n(16:9 Master vs 9:16 Smartphone Cutdown)"]:::deck
+        VoiceStudio["In-Browser Mic Voice Studio\n(MediaRecorder -> 24kHz Reference WAV)"]:::audio
     end
 
     ProcessPage <--> ApiClient
@@ -251,7 +270,7 @@ sequenceDiagram
     Ingest->>Server: POST /api/jobs/upload
     Server-->>Ingest: Job created (ID) + WebSocket connection
     
-    rect rgb(24, 26, 32)
+    rect rgb(20, 26, 38)
         note over Server,Engine: 6-Stage Automated AI Extraction Pipeline
         Server->>Engine: Stage 1: Demux 16kHz Mono Audio (FFmpeg direct stream)
         Server->>Engine: Stage 2: Transcribe speech with word-level timestamps (faster-whisper + Silero VAD)
@@ -265,21 +284,27 @@ sequenceDiagram
     Server-->>Ingest: WS Event: job_completed
     Ingest-->>Creator: Transition to Editorial Review Console (/review)
 
-    Creator->>Deck: Fine-tune In/Out points using NLE Sequencer & ±1f micro-nudges
-    Creator->>Deck: Select Audio Routing (Original / Intro Hook / Custom Voiceover)
-    Creator->>Deck: Adjust Voiceover placement slider on timeline
-    Creator->>Deck: Click "Apply & Re-render Clip"
-    Deck->>Server: POST /api/clips/{id}/rerender
-    Server-->>Deck: Re-rendered clip ready in ~15 seconds
+    rect rgb(28, 24, 20)
+        note over Creator,Deck: Non-Destructive Editorial Fine-Tuning
+        Creator->>Deck: Fine-tune In/Out points using NLE Sequencer & ±1f micro-nudges
+        Creator->>Deck: Select Audio Routing (Original / Intro Hook / Custom Voiceover)
+        Creator->>Deck: Adjust Voiceover placement slider on timeline
+        Creator->>Deck: Click "Apply & Re-render Clip"
+        Deck->>Server: POST /api/clips/{id}/rerender
+        Server-->>Deck: Re-rendered clip ready in ~15 seconds
+    end
 
-    alt Instant Upload
-        Creator->>Deck: Click "Publish Now"
-        Deck->>Server: POST /api/schedule/publish-now
-        Server->>Dist: Trigger immediate background upload via stealth browser
-    else Scheduled Post
-        Creator->>Deck: Click "Schedule Post"
-        Deck->>Server: POST /api/schedule
-        Server-->>Deck: Added to Broadcast Calendar (/calendar)
+    rect rgb(28, 18, 24)
+        note over Creator,Dist: Multi-Platform Broadcast Dispatch
+        alt Instant Upload
+            Creator->>Deck: Click "Publish Now"
+            Deck->>Server: POST /api/schedule/publish-now
+            Server->>Dist: Trigger immediate background upload via stealth browser
+        else Scheduled Post
+            Creator->>Deck: Click "Schedule Post"
+            Deck->>Server: POST /api/schedule
+            Server-->>Deck: Added to Broadcast Calendar (/calendar)
+        end
     end
 ```
 
@@ -332,23 +357,27 @@ The Editorial Review Console (`frontend/src/components/ClipTimelineEditor.tsx`) 
 
 ```mermaid
 flowchart LR
+    classDef track fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef control fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+    classDef monitor fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+
     subgraph TimelineDeck ["Multi-Track NLE Sequencer Deck"]
-        Ruler["Dynamic Timecode Ruler\n(Scaled MM:SS markers across clip range)"]
-        TrackV1["Track V1: Video Sequence Layer\n[Visual Storyboard Thumbnails + Active Slice Region]"]
-        TrackA1["Track A1: Audio Hook Layer\n[Interactive Draggable Spoken Hook Block]"]
+        Ruler["Dynamic Timecode Ruler\n(Scaled MM:SS markers across clip range)"]:::track
+        TrackV1["Track V1: Video Sequence Layer\n[Visual Storyboard Thumbnails + Active Slice Region]"]:::track
+        TrackA1["Track A1: Audio Hook Layer\n[Interactive Draggable Spoken Hook Block]"]:::track
     end
 
     subgraph Controls ["Hardware Tactile Creator Controls"]
-        Scrub["Continuous Video Scrubber\n(Scrub across entire long-form video)"]
-        MicroNudge["Micro-Nudge Precision Buttons\n(±1f = 0.033s | ±1s | ±5s)"]
-        Snapping["Mark In / Mark Out\n(Snap Start/End to current playhead frame)"]
-        ConstrainedDrag["Audio Hook Constraint Engine\n(0 <= offset <= clip_duration - hook_duration)"]
+        Scrub["Continuous Video Scrubber\n(Scrub across entire long-form video)"]:::control
+        MicroNudge["Micro-Nudge Precision Buttons\n(±1f = 0.033s | ±1s | ±5s)"]:::control
+        Snapping["Mark In / Mark Out\n(Snap Start/End to current playhead frame)"]:::control
+        ConstrainedDrag["Audio Hook Constraint Engine\n(0 <= offset <= clip_duration - hook_duration)"]:::control
     end
 
     subgraph MonitorEngine ["In-Browser Live Verification"]
-        DualMonitor["Dual 16:9 / 9:16 Synchronized Monitor"]
-        LiveDucking["Live Audio Ducking Mixer\n(Smoothly ducks video audio to 15% during hook)"]
-        FastRerender["One-Click Parameterized Re-Render\n(Targeted FFmpeg seek slices in ~15 seconds)"]
+        DualMonitor["Dual 16:9 / 9:16 Synchronized Monitor"]:::monitor
+        LiveDucking["Live Audio Ducking Mixer\n(Smoothly ducks video audio to 15% during hook)"]:::monitor
+        FastRerender["One-Click Parameterized Re-Render\n(Targeted FFmpeg seek slices in ~15 seconds)"]:::monitor
     end
 
     Scrub --> TimelineDeck
@@ -380,27 +409,31 @@ Alfred eliminates awkward voice collisions between synthetic AI narration and th
 
 ```mermaid
 flowchart TD
+    classDef natural fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+    classDef ducked fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef custom fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+
     subgraph Mode1 ["Mode 1: Original Dialogue (original)"]
         direction LR
-        Src1["Speaker Dialogue\n(100% Volume)"]
-        Out1["Master Audio: Pure Natural Voice\n(0% synthetic voiceover, 0% ducking, 100% fidelity)"]
+        Src1["Speaker Dialogue\n(100% Volume)"]:::natural
+        Out1["Master Audio: Pure Natural Voice\n(0% synthetic voiceover, 0% ducking, 100% fidelity)"]:::natural
         Src1 --> Out1
     end
 
     subgraph Mode2 ["Mode 2: Intro Hook at Start (intro_hook)"]
         direction LR
-        Hook2["Spoken Hook Narration\n(Plays at t = 0.0s)"]
-        Duck2["Speaker Dialogue ducked to 15%\nfor hook duration"]
-        Rec2["Smooth Volume Recovery\nback to 100%"]
+        Hook2["Spoken Hook Narration\n(Plays at t = 0.0s)"]:::ducked
+        Duck2["Speaker Dialogue ducked to 15%\nfor hook duration"]:::ducked
+        Rec2["Smooth Volume Recovery\nback to 100%"]:::natural
         Hook2 --> Duck2 --> Rec2
     end
 
     subgraph Mode3 ["Mode 3: Timeline Voiceover (custom_voiceover)"]
         direction LR
-        Pre3["Speaker Dialogue at 100%"]
-        Offset3["User Hook Placement\n(hook_offset_sec)"]
-        Duck3["Dialogue dynamically ducked to 15%"]
-        Post3["Smooth Volume Recovery\nback to 100%"]
+        Pre3["Speaker Dialogue at 100%"]:::natural
+        Offset3["User Hook Placement\n(hook_offset_sec)"]:::custom
+        Duck3["Dialogue dynamically ducked to 15%"]:::ducked
+        Post3["Smooth Volume Recovery\nback to 100%"]:::natural
         Pre3 --> Offset3 --> Duck3 --> Post3
     end
 ```
@@ -419,21 +452,26 @@ Traditional vertical tools center-crop 16:9 video, cutting off up to 60% of pres
 
 ```mermaid
 flowchart LR
+    classDef master fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef fit fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+    classDef split fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef face fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
+
     subgraph MasterInput ["Input: 16:9 Widescreen Master"]
-        Input169["Original 16:9 Video\n(Presenter + Slides / Code / Diagram)"]
+        Input169["Original 16:9 Video\n(Presenter + Slides / Code / Diagram)"]:::master
     end
 
     subgraph CanvasFit ["1. Canvas Fit (presentation_fit)"]
-        FitDesc["Full 16:9 Canvas Centered\n+ Dark Blurred Fill Padding\n(100% of slides, code, diagrams & subtitles remain visible)"]
+        FitDesc["Full 16:9 Canvas Centered\n+ Dark Blurred Fill Padding\n(100% of slides, code, diagrams & subtitles remain visible)"]:::fit
     end
 
     subgraph StackedSplit ["2. Stacked Split (split_screen)"]
-        SplitTop["Top 40%: Speaker Talking Head Window"]
-        SplitBottom["Bottom 60%: Slide Presentation Window"]
+        SplitTop["Top 40%: Speaker Talking Head Window"]:::split
+        SplitBottom["Bottom 60%: Slide Presentation Window"]:::split
     end
 
     subgraph FaceFocus ["3. Face Focus (face_focus)"]
-        CropDesc["YOLOv8n-Face Real-Time Tracking\nKinetic 9:16 Smart Crop for talking heads"]
+        CropDesc["YOLOv8n-Face Real-Time Tracking\nKinetic 9:16 Smart Crop for talking heads"]:::face
     end
 
     Input169 --> CanvasFit
@@ -459,21 +497,27 @@ Alfred includes an offline-first social distribution system that bypasses offici
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Scheduled: Schedule for Later
+    classDef scheduled fill:#0f172a,stroke:#38bdf8,color:#f1f5f9
+    classDef active fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff
+    classDef success fill:#064e3b,stroke:#34d399,color:#ecfdf5
+    classDef error fill:#4c0519,stroke:#fb7185,color:#ffe4e6
+    classDef retry fill:#1c1917,stroke:#fbbf24,color:#fef3c7
+
+    [*] --> Scheduled: Schedule for Later (ISO 8601 UTC)
     [*] --> Publishing: Publish Now (Instant Upload)
 
     Scheduled --> DueCheck: Scheduler Loop (30-60s heartbeat)
     DueCheck --> Publishing: scheduled_at <= now()
 
-    Publishing --> LaunchBrowser: Launch Stealth Playwright
-    LaunchBrowser --> VerifySession: Check Saved Cookie Auth
+    Publishing --> LaunchBrowser: Launch Stealth Playwright Context
+    LaunchBrowser --> VerifySession: Check Stored Cookie Auth
 
     VerifySession --> PerformUpload: Authenticated
     VerifySession --> SessionExpired: Session Expired / Not Logged In
 
-    PerformUpload --> Published: Upload Successful
+    PerformUpload --> Published: Upload Completed
     PerformUpload --> UploadError: Browser / DOM Error
-    SessionExpired --> UploadError: Authentication Required
+    SessionExpired --> UploadError: Needs Authentication
 
     UploadError --> AutoRetry: attempts < 3
     AutoRetry --> Publishing: Exponential Backoff (30s)
@@ -484,6 +528,12 @@ stateDiagram-v2
     Failed --> [*]: "Clear Failed" / Delete Post
 
     Published --> [*]
+
+    class Scheduled scheduled
+    class Publishing,LaunchBrowser,VerifySession,PerformUpload active
+    class Published success
+    class SessionExpired,UploadError,Failed error
+    class DueCheck,AutoRetry retry
 ```
 
 ### Queue Management & Failure Recovery

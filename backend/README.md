@@ -41,36 +41,43 @@ The backend daemon is built around an asynchronous, non-blocking state machine r
 
 ```mermaid
 flowchart TD
+    classDef gateway fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef worker fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef ai fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
+    classDef media fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+    classDef db fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+    classDef social fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
+
     subgraph Inbound ["Inbound Gateway (:8741)"]
-        HTTP["FastAPI REST Endpoints\n(/api/jobs, /api/clips, /api/schedule, /api/accounts)"]
-        WS["WebSocket Telemetry Gateway\n(ws://127.0.0.1:8741/ws)"]
+        HTTP["FastAPI REST Endpoints\n(/api/jobs, /api/clips, /api/schedule, /api/accounts)"]:::gateway
+        WS["WebSocket Telemetry Gateway\n(ws://127.0.0.1:8741/ws)"]:::gateway
     end
 
     subgraph Workers ["Async Task Workers"]
-        Orchestrator["Pipeline Orchestrator\n(6-Stage Automated AI Extraction)"]
-        ReRenderer["Fast Re-Render Engine\n(Targeted FFmpeg seek slices in ~15s)"]
-        Dispatcher["Scheduler Heartbeat Worker\n(Polls due queue every 30-60s)"]
+        Orchestrator["Pipeline Orchestrator\n(6-Stage Automated AI Extraction)"]:::worker
+        ReRenderer["Fast Re-Render Engine\n(Targeted FFmpeg seek slices in ~15s)"]:::worker
+        Dispatcher["Scheduler Heartbeat Worker\n(Polls due queue every 30-60s)"]:::worker
     end
 
     subgraph AI_Engine ["Local AI Processing Fleet"]
-        Demux["Audio Demuxer (16kHz Mono WAV)"]
-        Whisper["faster-whisper (CTranslate2 INT8 + Silero VAD)"]
-        Analyzer["Multimodal Analyzer (Optical Flow + Audio RMS)"]
-        Llama["Llama 3.2 1B Instruct (GGUF Q4_K_M)"]
-        Kokoro["Kokoro-82M ONNX + OpenVoice v2"]
-        Assembler["FFmpeg 9 Filtergraph Muxer"]
+        Demux["Audio Demuxer (16kHz Mono WAV)"]:::media
+        Whisper["faster-whisper (CTranslate2 INT8 + Silero VAD)"]:::ai
+        Analyzer["Multimodal Analyzer (Optical Flow + Audio RMS)"]:::ai
+        Llama["Llama 3.2 1B Instruct (GGUF Q4_K_M)"]:::ai
+        Kokoro["Kokoro-82M ONNX + OpenVoice v2"]:::ai
+        Assembler["FFmpeg 9 Filtergraph Muxer"]:::media
     end
 
     subgraph Storage ["SQLite Persistence (WAL Mode)"]
-        T_Jobs[("jobs & transcripts")]
-        T_Clips[("clips (scores, timecodes, modes, storyboards)")]
-        T_Schedule[("scheduled_posts (ISO 8601 UTC, status, attempts)")]
-        T_Accounts[("social_accounts (persistent Chromium profiles)")]
+        T_Jobs[("jobs & transcripts")]:::db
+        T_Clips[("clips (scores, timecodes, modes, storyboards)")]:::db
+        T_Schedule[("scheduled_posts (ISO 8601 UTC, status, attempts)")]:::db
+        T_Accounts[("social_accounts (persistent Chromium profiles)")]:::db
     end
 
     subgraph Outbound ["Stealth Distribution Engine"]
-        Playwright["Stealth Playwright Automation\n(Self-healing Chromium engine)"]
-        Social["YouTube Shorts / IG Reels / X"]
+        Playwright["Stealth Playwright Automation\n(Self-healing Chromium engine)"]:::social
+        Social["YouTube Shorts / IG Reels / X"]:::social
     end
 
     HTTP -->|Submit Video| Orchestrator
@@ -109,40 +116,49 @@ All 5 local AI models operate completely offline without cloud API keys:
 
 ```mermaid
 flowchart TD
-    VideoInput["Raw 16:9 Master Video (.mp4, .mov, .mkv)"] --> S1
+    classDef input fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef demux fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+    classDef whisper fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef vision fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
+    classDef llama fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+    classDef tts fill:#064e3b,stroke:#10b981,stroke-width:1.5px,color:#ecfdf5;
+    classDef mux fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
+    classDef out fill:#0f172a,stroke:#22c55e,stroke-width:1.5px,color:#f0fdf4;
+
+    VideoInput["Raw 16:9 Master Video (.mp4, .mov, .mkv)"]:::input --> S1
     
     subgraph Stage1 ["Stage 1: Audio Demuxing"]
-        S1["FFmpeg Stream Demux\n(-vn -ac 1 -ar 16000)\nOutput: 16kHz Mono WAV"]
+        S1["FFmpeg Stream Demux\n(-vn -ac 1 -ar 16000)\nOutput: 16kHz Mono WAV"]:::demux
     end
 
     subgraph Stage2 ["Stage 2: Speech-to-Text"]
-        S2["faster-whisper (CTranslate2 INT8)\nSilero VAD (Noise/Music Filter)\n5-Path Beam Search\nOutput: Word-level timestamps"]
+        S2["faster-whisper (CTranslate2 INT8)\nSilero VAD (Noise/Music Filter)\n5-Path Beam Search\nOutput: Word-level timestamps"]:::whisper
     end
 
     subgraph Stage3 ["Stage 3: Multimodal Hook & Viral Scoring"]
-        S3A["Optical Flow Motion Energy (2 fps)"]
-        S3B["Dynamic Audio RMS Spikes (Laughter, Swells)"]
-        S3C["Scene-Cut Boundary Anchoring"]
-        S3D["4-Frame Storyboards (+0s, +1s, +2s, +3s)"]
-        S3E["Calibrated Retention Index (88%-96%)"]
+        S3A["Optical Flow Motion Energy (2 fps)"]:::vision
+        S3B["Dynamic Audio RMS Spikes (Laughter, Swells)"]:::vision
+        S3C["Scene-Cut Boundary Anchoring"]:::vision
+        S3D["4-Frame Storyboards (+0s, +1s, +2s, +3s)"]:::vision
+        S3E["Calibrated Retention Index (88%-96%)"]:::vision
         S3A & S3B & S3C --> S3E
     end
 
     subgraph Stage4 ["Stage 4: Attention Hook Synthesis"]
-        S4["Llama 3.2 1B Instruct (GGUF)\nSpoken Hook + Upper 22% Safe Headline"]
+        S4["Llama 3.2 1B Instruct (GGUF)\nSpoken Hook + Upper 22% Safe Headline"]:::llama
     end
 
     subgraph Stage5 ["Stage 5: Voice Synthesis & Cloning"]
-        S5A["Kokoro-82M ONNX TTS (24kHz)"]
-        S5B["OpenVoice v2 Tone Converter (Acoustic Cloner)"]
+        S5A["Kokoro-82M ONNX TTS (24kHz)"]:::tts
+        S5B["OpenVoice v2 Tone Converter (Acoustic Cloner)"]:::tts
         S5A --> S5B
     end
 
     subgraph Stage6 ["Stage 6: Multi-Framing & FFmpeg Assembly"]
-        S6A["Framing: Canvas Fit / Stacked Split / Face Focus"]
-        S6B["Audio: Original / Intro Hook / Custom Voiceover"]
-        S6C["Sanitized Drawtext Headline Badge"]
-        S6A & S6B & S6C --> S6Out["Final 1080x1920 MP4 Cutdowns"]
+        S6A["Framing: Canvas Fit / Stacked Split / Face Focus"]:::mux
+        S6B["Audio: Original / Intro Hook / Custom Voiceover"]:::mux
+        S6C["Sanitized Drawtext Headline Badge"]:::mux
+        S6A & S6B & S6C --> S6Out["Final 1080x1920 MP4 Cutdowns"]:::out
     end
 
     S1 --> S2 --> S3A
@@ -151,7 +167,7 @@ flowchart TD
     S4 --> S5A
     S5B --> S6B
     S3D --> S6A
-    S6Out --> ClipsDB[("clips table in SQLite")]
+    S6Out --> ClipsDB[("clips table in SQLite")]:::input
 ```
 
 ### 1. Demuxing & Transcription (`transcriber.py`)
@@ -219,6 +235,12 @@ Alfred includes an offline-first social distribution system that bypasses offici
 
 ```mermaid
 stateDiagram-v2
+    classDef scheduled fill:#0f172a,stroke:#38bdf8,color:#f1f5f9
+    classDef active fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff
+    classDef success fill:#064e3b,stroke:#34d399,color:#ecfdf5
+    classDef error fill:#4c0519,stroke:#fb7185,color:#ffe4e6
+    classDef retry fill:#1c1917,stroke:#fbbf24,color:#fef3c7
+
     [*] --> Scheduled: Schedule for Later (ISO 8601 UTC)
     [*] --> Publishing: Publish Now (Instant Upload)
 
@@ -244,6 +266,12 @@ stateDiagram-v2
     Failed --> [*]: "Clear Failed" / Delete Post
 
     Published --> [*]
+
+    class Scheduled scheduled
+    class Publishing,LaunchBrowser,VerifySession,PerformUpload active
+    class Published success
+    class SessionExpired,UploadError,Failed error
+    class DueCheck,AutoRetry retry
 ```
 
 ### Anti-Bot Fingerprint Hardening & Stealth Profiles
