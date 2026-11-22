@@ -27,6 +27,98 @@ import { formatTime, formatDateTimeLocalInput, cn } from '../lib/utils'
 import { Modal } from '../components/Modal'
 import { ClipTimelineEditor } from '../components/ClipTimelineEditor'
 
+function deriveContentHashtags(clip: Clip, videoName?: string): string {
+  const cleanedVideoName = (videoName || '').replace(/\[[a-zA-Z0-9_\-]+\]/g, '')
+  const combined = `${cleanedVideoName} ${clip.hook_text || ''} ${clip.transcript_text || ''}`
+  const clean = combined.replace(/https?:\/\/\S+/g, '').replace(/[^a-zA-Z0-9\s]/g, ' ').toLowerCase()
+
+  const phraseMap: [string, string][] = [
+    ['artificial intelligence', 'ArtificialIntelligence'],
+    ['machine learning', 'MachineLearning'],
+    ['deep learning', 'DeepLearning'],
+    ['data science', 'DataScience'],
+    ['neural network', 'NeuralNetworks'],
+    ['web development', 'WebDev'],
+    ['software engineering', 'SoftwareEngineering'],
+    ['open source', 'OpenSource'],
+    ['content creation', 'ContentCreator'],
+    ['social media', 'SocialMedia'],
+    ['product management', 'ProductManagement'],
+    ['podcast episode', 'Podcast'],
+    ['public speaking', 'PublicSpeaking'],
+  ]
+
+  const detectedTags: string[] = []
+  for (const [phrase, tag] of phraseMap) {
+    if (clean.includes(phrase)) {
+      detectedTags.push(`#${tag}`)
+    }
+  }
+
+  const stopwords = new Set([
+    'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'aren',
+    'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'can',
+    'could', 'did', 'do', 'does', 'doing', 'don', 'down', 'during', 'each', 'few', 'for', 'from', 'further',
+    'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'herself', 'him', 'himself', 'his', 'how',
+    'i', 'if', 'in', 'into', 'is', 'it', 'its', 'itself', 'let', 'me', 'more', 'most', 'my', 'myself',
+    'no', 'nor', 'not', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'ought', 'our', 'ours', 'ourselves',
+    'out', 'over', 'own', 'same', 'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their',
+    'theirs', 'them', 'themselves', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too',
+    'under', 'until', 'up', 'very', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who',
+    'whom', 'why', 'with', 'won', 'would', 'you', 'your', 'yours', 'yourself', 'yourselves',
+    'um', 'uh', 'like', 'yeah', 'okay', 'alright', 'well', 'actually', 'basically', 'literally', 'gonna',
+    'wanna', 'gotta', 'said', 'say', 'saying', 'think', 'thinking', 'know', 'knowing', 'just', 'really',
+    'mean', 'thing', 'things', 'something', 'anything', 'nothing', 'everything', 'people', 'guys', 'person',
+    'look', 'looking', 'see', 'seeing', 'want', 'wanted', 'take', 'taking', 'make', 'making', 'go', 'going',
+    'gone', 'went', 'come', 'coming', 'came', 'get', 'getting', 'got', 'video', 'clip', 'watch', 'channel',
+    'also', 'even', 'much', 'many', 'good', 'great', 'cool', 'first', 'last', 'long', 'little', 'right',
+    'still', 'way', 'may', 'might', 'must', 'will', 'shall', 'one', 'two',
+  ])
+
+  const words = clean.split(/\s+/)
+  const counts = new Map<string, number>()
+  const titleWords = new Set(
+    `${cleanedVideoName} ${clip.hook_text || ''}`.replace(/[^a-zA-Z0-9\s]/g, ' ').toLowerCase().split(/\s+/)
+  )
+
+  for (const w of words) {
+    if (
+      w.length >= 3 &&
+      !stopwords.has(w) &&
+      !/^\d+$/.test(w) &&
+      !(/\d/.test(w) && /[a-z]/.test(w)) &&
+      /[aeiouy]/.test(w)
+    ) {
+      const weight = titleWords.has(w) ? 3 : 1
+      counts.set(w, (counts.get(w) || 0) + weight)
+    }
+  }
+
+  const sortedWords = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(e => e[0])
+
+  const tags = [...detectedTags]
+  const seen = new Set(tags.map(t => t.slice(1).toLowerCase()))
+
+  for (const w of sortedWords) {
+    if (tags.length >= 6) break
+    const tag = `#${w.charAt(0).toUpperCase()}${w.slice(1)}`
+    if (!seen.has(w.toLowerCase())) {
+      tags.push(tag)
+      seen.add(w.toLowerCase())
+    }
+  }
+
+  for (const defaultTag of ['#Shorts', '#Reels', '#Viral']) {
+    if (!seen.has(defaultTag.slice(1).toLowerCase())) {
+      tags.push(defaultTag)
+    }
+  }
+
+  return tags.join(' ')
+}
+
 export function ReviewPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const currentJobId = searchParams.get('jobId')
@@ -44,6 +136,7 @@ export function ReviewPage() {
   const [trimStarts, setTrimStarts] = useState<Record<string, number>>({})
   const [trimEnds, setTrimEnds] = useState<Record<string, number>>({})
   const [hookOffsets, setHookOffsets] = useState<Record<string, number>>({})
+  const [duckingVolumes, setDuckingVolumes] = useState<Record<string, number>>({})
   const [rerenderingId, setRerenderingId] = useState<string | null>(null)
   const [synthesizingId, setSynthesizingId] = useState<string | null>(null)
   const [renderTimestamps, setRenderTimestamps] = useState<Record<string, number>>({})
@@ -190,6 +283,7 @@ export function ReviewPage() {
       const end_time = trimEnds[clip.id] ?? clip.end_time
       const audio_mode = audioModes[clip.id] || 'original'
       const hook_offset_sec = hookOffsets[clip.id] ?? 0.0
+      const ducking_volume = duckingVolumes[clip.id] ?? clip.ducking_volume ?? 0.15
       const hook_text = editHooks[clip.id] ?? clip.hook_text
 
       const updated = await clipsApi.rerender(clip.id, {
@@ -198,6 +292,7 @@ export function ReviewPage() {
         framing_mode: 'presentation_fit',
         audio_mode,
         hook_offset_sec,
+        ducking_volume,
         hook_text: audio_mode !== 'original' ? hook_text : undefined,
         voice_preset: activeSoundProfile.preset,
         use_cloned_voice: activeSoundProfile.cloningEnabled,
@@ -208,6 +303,7 @@ export function ReviewPage() {
       setTrimEnds(prev => ({ ...prev, [clip.id]: updated.end_time }))
       setAudioModes(prev => ({ ...prev, [clip.id]: updated.audio_mode || audio_mode }))
       setHookOffsets(prev => ({ ...prev, [clip.id]: updated.hook_offset_sec ?? hook_offset_sec }))
+      setDuckingVolumes(prev => ({ ...prev, [clip.id]: updated.ducking_volume ?? ducking_volume }))
       setRenderTimestamps(prev => ({ ...prev, [clip.id]: Date.now() }))
       alert('Clip re-rendered successfully with your custom timing and audio settings!')
     } catch (err: unknown) {
@@ -250,7 +346,9 @@ export function ReviewPage() {
     setPublishMode(mode)
     setScheduleTitle(clip.hook_text || `Highlight from video`)
     setScheduleDescription(clip.transcript_text.slice(0, 250) + '...')
-    setScheduleTags('#shorts #reels #viral #content')
+    // Use stored content tags or dynamically derive from video speech and keywords
+    const contentTags = clip.tags || deriveContentHashtags(clip, selectedJob?.video_name)
+    setScheduleTags(contentTags)
     // Default to tomorrow 10:00 AM in user's local time
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -677,11 +775,13 @@ export function ReviewPage() {
                         audioMode={audioModes[clip.id] || clip.audio_mode || 'original'}
                         hookOffsetSec={hookOffsets[clip.id] ?? clip.hook_offset_sec ?? 0.0}
                         hookText={editHooks[clip.id] ?? clip.hook_text ?? ''}
+                        duckingVolume={duckingVolumes[clip.id] ?? clip.ducking_volume ?? 0.15}
                         onStartTimeChange={(time) => setTrimStarts(prev => ({ ...prev, [clip.id]: time }))}
                         onEndTimeChange={(time) => setTrimEnds(prev => ({ ...prev, [clip.id]: time }))}
                         onAudioModeChange={(mode) => setAudioModes(prev => ({ ...prev, [clip.id]: mode }))}
                         onHookOffsetChange={(offset) => setHookOffsets(prev => ({ ...prev, [clip.id]: offset }))}
                         onHookTextChange={(text) => setEditHooks(prev => ({ ...prev, [clip.id]: text }))}
+                        onDuckingVolumeChange={(vol) => setDuckingVolumes(prev => ({ ...prev, [clip.id]: vol }))}
                         onSaveHookText={() => handleSaveHookText(clip.id)}
                         onSynthesizeVoice={() => handleSynthesizeVoice(clip)}
                         onRerender={() => handleReRender(clip)}
@@ -851,16 +951,38 @@ export function ReviewPage() {
 
               {/* Tags */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-1">
-                  Hashtags
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                    Hashtags
+                  </label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!schedulingClip) return
+                      try {
+                        const res = await clipsApi.generateTags(schedulingClip.id)
+                        setScheduleTags(res.tags)
+                        setClipsList(prev => prev.map(c => c.id === schedulingClip.id ? { ...c, tags: res.tags } : c))
+                      } catch {
+                        setScheduleTags(deriveContentHashtags(schedulingClip, selectedJob?.video_name))
+                      }
+                    }}
+                    className="text-xs text-accent hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                    title="Generate hashtags derived from video speech and keywords"
+                  >
+                    <Sparkles size={11} /> Auto-Generate from Video
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={scheduleTags}
                   onChange={(e) => setScheduleTags(e.target.value)}
-                  placeholder="#shorts #podcast #tech"
-                  className="w-full text-xs p-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-1 focus:ring-accent"
+                  placeholder="#keywords #topic #shorts #reels"
+                  className="w-full text-xs p-2.5 rounded-lg border border-border bg-white text-text focus:outline-none focus:ring-1 focus:ring-accent font-mono"
                 />
+                <p className="text-[10px] text-text-muted mt-1">
+                  Contextual hashtags generated directly from speech transcript, hook, and video topics.
+                </p>
               </div>
 
               {/* Actions */}

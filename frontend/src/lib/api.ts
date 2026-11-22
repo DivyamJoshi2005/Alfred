@@ -69,7 +69,16 @@ export const jobs = {
 // ── Clips ───────────────────────────────────────────────
 export const clips = {
   listForJob: (jobId: string) => request<import('./types').Clip[]>(`/api/clips/job/${jobId}`),
-  update: (clipId: string, data: Partial<{ status: string; hook_text: string; start_time: number; end_time: number; audio_mode: string; hook_offset_sec: number }>) =>
+  update: (clipId: string, data: Partial<{
+    status: string
+    hook_text: string
+    start_time: number
+    end_time: number
+    audio_mode: string
+    hook_offset_sec: number
+    ducking_volume: number
+    tags: string
+  }>) =>
     request<import('./types').Clip>(`/api/clips/${clipId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -81,6 +90,8 @@ export const clips = {
     audio_mode?: string
     hook_text?: string
     hook_offset_sec?: number
+    ducking_volume?: number
+    tags?: string
     voice_preset?: string
     use_cloned_voice?: boolean
     reference_sample_name?: string
@@ -93,6 +104,10 @@ export const clips = {
     request<{ hook_audio_path: string; hook_text: string }>(`/api/clips/${clipId}/synthesize-voice`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+  generateTags: (clipId: string) =>
+    request<{ clip_id: string; tags: string }>(`/api/clips/${clipId}/generate-tags`, {
+      method: 'POST',
     }),
 }
 

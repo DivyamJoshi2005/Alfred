@@ -70,9 +70,109 @@ def _build_hook_user_prompt(seg: dict) -> str:
     return "\n".join(context_lines) + "\n\nWrite a viral hook for this clip:"
 
 
+def generate_content_hashtags(transcript: str, hook_text: str = "", video_name: str = "") -> str:
+    """Generate smart, content-derived hashtags for short-form video discovery."""
+    import re
+    from collections import Counter
+
+    # Strip bracketed YouTube video IDs e.g. [jNQXAC9IVRw] or [3pG8Hgq3Z8M]
+    cleaned_video_name = re.sub(r'\[[a-zA-Z0-9_\-]+\]', '', video_name or '')
+    combined_text = f"{cleaned_video_name} {hook_text} {transcript}"
+    clean = re.sub(r'https?://\S+', '', combined_text)
+    clean = re.sub(r'[^a-zA-Z0-9\s]', ' ', clean).lower()
+
+    # Domain specific multi-word mapping
+    detected_phrases = []
+    phrase_map = [
+        ("artificial intelligence", "ArtificialIntelligence"),
+        ("machine learning", "MachineLearning"),
+        ("deep learning", "DeepLearning"),
+        ("data science", "DataScience"),
+        ("neural network", "NeuralNetworks"),
+        ("computer science", "ComputerScience"),
+        ("web development", "WebDev"),
+        ("software engineering", "SoftwareEngineering"),
+        ("open source", "OpenSource"),
+        ("content creation", "ContentCreator"),
+        ("social media", "SocialMedia"),
+        ("product management", "ProductManagement"),
+        ("cyber security", "CyberSecurity"),
+        ("cloud computing", "CloudComputing"),
+        ("user experience", "UXDesign"),
+        ("startup founder", "Startup"),
+        ("public speaking", "PublicSpeaking"),
+        ("keynote speech", "Keynote"),
+        ("podcast episode", "Podcast"),
+    ]
+    for phrase, tag in phrase_map:
+        if phrase in clean:
+            detected_phrases.append(f"#{tag}")
+
+    stopwords = {
+        "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "aren't",
+        "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can",
+        "cannot", "could", "couldn't", "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down", "during",
+        "each", "few", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", "haven't", "having",
+        "he", "he'd", "he'll", "he's", "her", "here", "here's", "hers", "herself", "him", "himself", "his", "how",
+        "how's", "i", "i'd", "i'll", "i'm", "i've", "if", "in", "into", "is", "isn't", "it", "it's", "its", "itself",
+        "let's", "me", "more", "most", "mustn't", "my", "myself", "no", "nor", "not", "of", "off", "on", "once",
+        "only", "or", "other", "ought", "our", "ours", "ourselves", "out", "over", "own", "same", "shan't", "she",
+        "she'd", "she'll", "she's", "should", "shouldn't", "so", "some", "such", "than", "that", "that's", "the",
+        "their", "theirs", "them", "themselves", "then", "there", "there's", "these", "they", "they'd", "they'll",
+        "they're", "they've", "this", "those", "through", "to", "too", "under", "until", "up", "very", "was",
+        "wasn't", "we", "we'd", "we'll", "we're", "we've", "were", "weren't", "what", "what's", "when", "when's",
+        "where", "where's", "which", "while", "who", "who's", "whom", "why", "why's", "with", "won't", "would",
+        "wouldn't", "you", "you'd", "you'll", "you're", "you've", "your", "yours", "yourself", "yourselves",
+        "um", "uh", "like", "yeah", "okay", "alright", "well", "actually", "basically", "literally", "gonna",
+        "wanna", "gotta", "said", "say", "saying", "think", "thinking", "know", "knowing", "just", "really",
+        "mean", "thing", "things", "something", "anything", "nothing", "everything", "people", "guys", "person",
+        "look", "looking", "see", "seeing", "want", "wanted", "take", "taking", "make", "making", "go", "going",
+        "gone", "went", "come", "coming", "came", "get", "getting", "got", "video", "clip", "watch", "channel",
+        "also", "even", "much", "many", "good", "great", "cool", "first", "last", "long", "little", "right",
+        "still", "way", "may", "might", "must", "can", "could", "will", "would", "shall", "should", "one", "two",
+    }
+
+    words = clean.split()
+    weighted_words = []
+    title_words = set(re.sub(r'[^a-zA-Z0-9\s]', ' ', f"{cleaned_video_name} {hook_text}").lower().split())
+    for w in words:
+        # Ignore stopwords, pure numbers, alphanumeric hash IDs, and vowel-less tokens
+        if (
+            len(w) >= 3
+            and w not in stopwords
+            and not w.isdigit()
+            and not (re.search(r'[0-9]', w) and re.search(r'[a-zA-Z]', w))
+            and re.search(r'[aeiouy]', w)
+        ):
+            weighted_words.append(w)
+            if w in title_words:
+                weighted_words.extend([w, w])
+
+    counts = Counter(weighted_words)
+    top_words = [w for w, _ in counts.most_common(8)]
+
+    tags = list(detected_phrases)
+    seen_roots = set(t.lstrip('#').lower() for t in tags)
+
+    for w in top_words:
+        if len(tags) >= 6:
+            break
+        tag_val = w.capitalize()
+        if tag_val.lower() not in seen_roots:
+            tags.append(f"#{tag_val}")
+            seen_roots.add(tag_val.lower())
+
+    for default_tag in ["#Shorts", "#Reels", "#Viral"]:
+        if default_tag.lower() not in seen_roots:
+            tags.append(default_tag)
+
+    return " ".join(tags)
+
+
 async def generate_hooks(
     segments: list[dict[str, Any]],
     job_id: str,
+    video_name: str = "",
 ) -> list[dict[str, Any]]:
     """Generate a hook intro script for each segment using Llama 3.2 1B."""
     global _llm_instance
@@ -103,6 +203,11 @@ async def generate_hooks(
         transcript_text = seg.get("transcript_text", "")
         if not transcript_text:
             seg["hook_text"] = _heuristic_hook(seg)
+            seg["tags"] = generate_content_hashtags(
+                transcript=transcript_text,
+                hook_text=seg["hook_text"],
+                video_name=video_name,
+            )
             continue
 
         if _llm_instance is not None:
@@ -127,6 +232,13 @@ async def generate_hooks(
                 seg["hook_text"] = _heuristic_hook(seg)
         else:
             seg["hook_text"] = _heuristic_hook(seg)
+
+        # Generate intelligent contextual hashtags derived from actual segment content
+        seg["tags"] = generate_content_hashtags(
+            transcript=seg.get("transcript_text", ""),
+            hook_text=seg.get("hook_text", ""),
+            video_name=video_name,
+        )
 
     _llm_instance = None
     await manager.send_progress(job_id, "generating_hooks", 100, "Hooks generated")

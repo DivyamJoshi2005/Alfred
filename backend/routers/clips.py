@@ -20,6 +20,8 @@ def _row_to_clip_response(row) -> ClipResponse:
         hook_audio_path=row["hook_audio_path"],
         audio_mode=row["audio_mode"] if "audio_mode" in keys and row["audio_mode"] else "original",
         hook_offset_sec=float(row["hook_offset_sec"]) if "hook_offset_sec" in keys and row["hook_offset_sec"] is not None else 0.0,
+        ducking_volume=float(row["ducking_volume"]) if "ducking_volume" in keys and row["ducking_volume"] is not None else 0.15,
+        tags=row["tags"] if "tags" in keys else None,
         output_path=row["output_path"],
         status=row["status"],
         rationale=row["rationale"],
@@ -89,6 +91,14 @@ async def update_clip(clip_id: str, body: ClipUpdate):
         if body.hook_offset_sec is not None:
             updates.append("hook_offset_sec = ?")
             params.append(body.hook_offset_sec)
+
+        if body.ducking_volume is not None:
+            updates.append("ducking_volume = ?")
+            params.append(max(0.0, min(1.0, float(body.ducking_volume))))
+
+        if body.tags is not None:
+            updates.append("tags = ?")
+            params.append(body.tags)
 
         if body.start_time is not None or body.end_time is not None:
             # Recompute duration
@@ -222,6 +232,14 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
             # ORIGINAL SOUND ONLY: No voiceovers, overlays, or ducking. Pure source video audio!
             hook_audio_path = None
 
+        # Original sound ducking volume level (0.0 to 1.0)
+        ducking_volume = (
+            body.ducking_volume
+            if body.ducking_volume is not None
+            else (float(clip["ducking_volume"]) if "ducking_volume" in clip.keys() and clip["ducking_volume"] is not None else 0.15)
+        )
+        ducking_volume = max(0.0, min(1.0, float(ducking_volume)))
+
         from pipeline.assembler import render_single_clip
         await render_single_clip(
             video_path=video_path,
@@ -234,11 +252,12 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
             framing_mode=framing_mode,
             audio_mode=audio_mode,
             hook_offset_sec=hook_offset_sec,
+            ducking_volume=ducking_volume,
         )
 
         await db.execute(
             """UPDATE clips
-               SET start_time = ?, end_time = ?, duration = ?, hook_text = ?, hook_audio_path = ?, audio_mode = ?, hook_offset_sec = ?, output_path = ?, status = 'rendered'
+               SET start_time = ?, end_time = ?, duration = ?, hook_text = ?, hook_audio_path = ?, audio_mode = ?, hook_offset_sec = ?, ducking_volume = ?, output_path = ?, status = 'rendered'
                WHERE id = ?""",
             (
                 start_time,
@@ -248,6 +267,7 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
                 str(hook_audio_path) if hook_audio_path else (clip["hook_audio_path"] if audio_mode != "original" else None),
                 audio_mode,
                 hook_offset_sec,
+                ducking_volume,
                 str(output_path),
                 clip_id,
             ),
@@ -323,6 +343,38 @@ async def synthesize_clip_voice(clip_id: str, body: ClipSynthesizeRequest):
         return {
             "hook_audio_path": str(out_wav),
             "hook_text": body.script_text,
+        }
+    finally:
+        await db.close()
+
+
+@router.post("/{clip_id}/generate-tags")
+async def generate_clip_tags(clip_id: str):
+    """Generate smart content-aware hashtags based on the clip's transcript and hook."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
+        clip = await cursor.fetchone()
+        if not clip:
+            raise HTTPException(status_code=404, detail="Clip not found")
+
+        job_cursor = await db.execute("SELECT video_name FROM jobs WHERE id = ?", (clip["job_id"],))
+        job = await job_cursor.fetchone()
+        video_name = job["video_name"] if job else ""
+
+        from pipeline.hook_generator import generate_content_hashtags
+        tags = generate_content_hashtags(
+            transcript=clip["transcript_text"] or "",
+            hook_text=clip["hook_text"] or "",
+            video_name=video_name,
+        )
+
+        await db.execute("UPDATE clips SET tags = ? WHERE id = ?", (tags, clip_id))
+        await db.commit()
+
+        return {
+            "clip_id": clip_id,
+            "tags": tags,
         }
     finally:
         await db.close()

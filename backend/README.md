@@ -553,8 +553,9 @@ The backend exposes a clean REST API documented interactively via Swagger UI at 
 | `GET` | `/api/jobs` | None | Returns list of all historical video processing jobs. |
 | `GET` | `/api/jobs/{id}` | Path param `id: str` | Retrieves detailed job status, progress percentage, and extracted clips. |
 | `GET` | `/api/clips/job/{job_id}` | Path param `job_id: str` | Fetches all clips extracted for a specific job with scores and storyboard frame URLs. |
-| `POST` | `/api/clips/{id}/rerender` | JSON: `start_time`, `end_time`, `framing_mode`, `audio_mode`, `voiceover_offset`, `headline_text` | Re-renders single clip in ~15s using targeted FFmpeg seek filters. |
+| `POST` | `/api/clips/{id}/rerender` | JSON: `start_time`, `end_time`, `framing_mode`, `audio_mode`, `hook_offset_sec`, `ducking_volume`, `hook_text` | Re-renders single clip in ~15s using targeted FFmpeg seek and audio ducking filtergraphs. |
 | `POST` | `/api/clips/{id}/synthesize-voice` | JSON: `text: str`, `voice_id: str` | Generates 24kHz hook audio using Kokoro-82M or cloned voice. |
+| `POST` | `/api/clips/{id}/generate-tags` | None | Automatically derives content-aware hashtags from clip speech transcript and hook. |
 | `POST` | `/api/schedule/publish-now` | JSON: `clip_id: str`, `platform: str`, `title: str`, `tags: list[str]` | **Immediately publishes clip right now** via background Playwright worker. |
 | `POST` | `/api/schedule` | JSON: `clip_id: str`, `platform: str`, `scheduled_at: str`, `title: str`, `tags: list[str]` | Queues clip for future broadcast at the specified ISO 8601 UTC date/time. |
 | `POST` | `/api/schedule/{id}/retry` | Path param `id: str` | Resets failed post attempt count to 0 and re-triggers upload immediately. |

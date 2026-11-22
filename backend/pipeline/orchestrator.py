@@ -88,6 +88,7 @@ async def run_pipeline(job_id: str):
         segments_with_hooks = await generate_hooks(
             segments=segments,
             job_id=job_id,
+            video_name=video_name,
         )
 
         # Save clips to DB with multimodal scores & storyboard proofs
@@ -98,8 +99,8 @@ async def run_pipeline(job_id: str):
                 """INSERT INTO clips (id, job_id, rank, start_time, end_time, duration,
                    transcript_text, hook_text, status, rationale,
                    visual_score, audio_score, hook_score, retention_score,
-                   visual_hook_rationale, storyboard_paths)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
+                   visual_hook_rationale, storyboard_paths, tags, ducking_volume)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (clip_id, job_id, i + 1, seg["start_time"], seg["end_time"],
                  duration, seg["transcript_text"], seg.get("hook_text"),
                  seg.get("rationale"),
@@ -108,7 +109,9 @@ async def run_pipeline(job_id: str):
                  seg.get("hook_score", 0.0),
                  seg.get("retention_score", 0.0),
                  seg.get("visual_hook_rationale"),
-                 seg.get("storyboard_paths")),
+                 seg.get("storyboard_paths"),
+                 seg.get("tags"),
+                 seg.get("ducking_volume", 0.15)),
             )
             seg["clip_id"] = clip_id
             seg["rank"] = i + 1

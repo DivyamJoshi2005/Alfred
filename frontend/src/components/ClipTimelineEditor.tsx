@@ -36,11 +36,13 @@ interface ClipTimelineEditorProps {
   audioMode: string
   hookOffsetSec: number
   hookText: string
+  duckingVolume?: number
   onStartTimeChange: (time: number) => void
   onEndTimeChange: (time: number) => void
   onAudioModeChange: (mode: string) => void
   onHookOffsetChange: (offset: number) => void
   onHookTextChange: (text: string) => void
+  onDuckingVolumeChange?: (volume: number) => void
   onSaveHookText: () => Promise<void>
   onSynthesizeVoice: () => Promise<void>
   onRerender: () => Promise<void>
@@ -78,11 +80,13 @@ export function ClipTimelineEditor({
   audioMode,
   hookOffsetSec,
   hookText,
+  duckingVolume = 0.15,
   onStartTimeChange,
   onEndTimeChange,
   onAudioModeChange,
   onHookOffsetChange,
   onHookTextChange,
+  onDuckingVolumeChange,
   onSaveHookText,
   onSynthesizeVoice,
   onRerender,
@@ -258,7 +262,7 @@ export function ClipTimelineEditor({
       if (absTime >= hookStart && absTime < hookEnd) {
         if (!isDucked) {
           setIsDucked(true)
-          if (!isMuted) videoRef.current.volume = 0.15 // Duck video volume to 15%
+          if (!isMuted) videoRef.current.volume = duckingVolume // Duck video volume to custom level
           const elapsed = absTime - hookStart
           if (Math.abs(hookAudioRef.current.currentTime - elapsed) > 0.25) {
             hookAudioRef.current.currentTime = Math.max(0, elapsed)
@@ -1064,6 +1068,77 @@ export function ClipTimelineEditor({
               </button>
             </div>
             <span>Max End ({maxHookOffset.toFixed(1)}s)</span>
+          </div>
+        </div>
+      )}
+
+      {/* Original Sound Duck Adjuster (when Voiceover is active) */}
+      {audioMode !== 'original' && (
+        <div className="p-3.5 rounded-xl bg-accent/10 border border-accent/30 space-y-2.5 animate-fade-in text-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 font-semibold text-white">
+              <Volume2 size={13} className="text-accent" />
+              <span>Original Sound Duck Adjuster</span>
+            </div>
+            <span className="font-mono font-bold text-accent px-2.5 py-0.5 rounded bg-stone-900 border border-accent/30">
+              {Math.round(duckingVolume * 100)}% Volume
+              <span className="text-stone-400 font-normal ml-1">
+                {duckingVolume === 0 ? '(Muted)' : duckingVolume <= 0.15 ? '(Standard Duck)' : duckingVolume <= 0.35 ? '(Subtle Duck)' : '(Light Duck)'}
+              </span>
+            </span>
+          </div>
+
+          <p className="text-[11px] text-stone-400 leading-normal">
+            Adjust how much the original video audio is lowered while the voiceover speaks.
+          </p>
+
+          <input
+            type="range"
+            min="0.0"
+            max="1.0"
+            step="0.05"
+            value={duckingVolume}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value)
+              onDuckingVolumeChange?.(val)
+              if (isDucked && videoRef.current && !isMuted) {
+                videoRef.current.volume = val
+              }
+            }}
+            className="w-full accent-accent cursor-pointer h-1.5 bg-stone-700 rounded-lg"
+          />
+
+          <div className="flex items-center justify-between text-[10px] text-stone-400">
+            <span>0% (Muted)</span>
+            <div className="flex gap-1.5 flex-wrap">
+              {[
+                { label: '0% Mute', val: 0.0 },
+                { label: '15% Standard', val: 0.15 },
+                { label: '30% Subtle', val: 0.30 },
+                { label: '50% Half', val: 0.50 },
+                { label: '100% Full', val: 1.0 },
+              ].map(p => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    onDuckingVolumeChange?.(p.val)
+                    if (isDucked && videoRef.current && !isMuted) {
+                      videoRef.current.volume = p.val
+                    }
+                  }}
+                  className={cn(
+                    'px-2 py-0.5 rounded text-[10px] transition-colors border cursor-pointer',
+                    Math.abs(duckingVolume - p.val) < 0.03
+                      ? 'bg-accent text-accent-text border-accent font-semibold'
+                      : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border-stone-700'
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <span>100% (No Duck)</span>
           </div>
         </div>
       )}

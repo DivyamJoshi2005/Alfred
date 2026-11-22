@@ -47,6 +47,8 @@ export interface Clip {
   storyboard_paths?: string | null
   audio_mode?: string
   hook_offset_sec?: number
+  ducking_volume?: number
+  tags?: string | null
   created_at: string
 }
 

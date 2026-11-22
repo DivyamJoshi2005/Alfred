@@ -395,9 +395,10 @@ flowchart LR
 - **Unrestricted Video Scrubber**: Scrub anywhere across the entire video duration—not limited to the current clip slice.
 - **Frame Snapping**: "Set Start Here" and "Set End Here" snap clip boundaries directly to the current playhead position.
 
-### In-Browser Live Ducked Audio Preview
-- When previewing clips in the browser with `intro_hook` or `custom_voiceover`, Alfred dynamically monitors video playhead position.
-- Video audio volume is smoothly ducked (to 15%) while the spoken hook audio plays, and automatically recovered when the hook finishes.
+### In-Browser Live Ducked Audio Preview & Original Sound Duck Adjuster
+- **Adjustable Original Sound Ducking**: Manually choose how much the background dialogue lowers while the voiceover plays—from `0%` (complete background silence) to `100%` (full original volume), with one-click presets (`0% Mute`, `15% Standard`, `30% Subtle`, `50% Half`, `100% Full`).
+- **Live In-Browser Audio Preview**: When scrubbing or playing clips with `intro_hook` or `custom_voiceover`, Alfred dynamically monitors playhead position, attenuates the video audio to your exact selected ducking percentage while the hook speaks, and smoothly restores it to 100% afterwards.
+- **Smart Content-Derived Hashtags**: Replaces hardcoded hashtags with context-aware tags automatically extracted from speech transcripts, viral hooks, and video topics (e.g. `#Python #FastAPI #Coding #Shorts #Reels`). Re-derive or fine-tune tags on the fly with a single click.
 
 ---
 
@@ -757,6 +758,7 @@ CREATE TABLE social_accounts (
 | `PATCH` | `/api/clips/{clip_id}` | `{status, hook_text, start_time, end_time, audio_mode, hook_offset_sec}` | Update clip approval status, hook text, or trim boundaries |
 | `POST` | `/api/clips/{clip_id}/rerender` | `{start_time, end_time, framing_mode, audio_mode, hook_offset_sec}` | Re-assemble clip with custom trim boundaries, framing, or audio ducking |
 | `POST` | `/api/clips/{clip_id}/synthesize-voice` | `{text, voice_preset, use_voice_clone, sample_name}` | Synthesize Kokoro or cloned voiceover track |
+| `POST` | `/api/clips/{clip_id}/generate-tags` | — | Generate content-aware hashtags based on clip speech transcript and hook |
 | `POST` | `/api/schedule/publish-now` | `{clip_id, platform, title, description, tags}` | **Immediately upload clip right now** in the background |
 | `POST` | `/api/schedule` | `{clip_id, platform, scheduled_at, title, description, tags}` | Schedule a clip for future publication |
 | `GET` | `/api/schedule` | Query: `from_date`, `to_date` | Retrieve scheduled calendar posts |

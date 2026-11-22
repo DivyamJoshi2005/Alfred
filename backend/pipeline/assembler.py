@@ -66,6 +66,7 @@ async def assemble_clips(
                 hook_text=hook_text,
                 framing_mode=framing_mode,
                 audio_mode=chosen_audio_mode,
+                ducking_volume=float(seg.get("ducking_volume", 0.15)),
             )
             seg["output_path"] = str(output_path)
         except Exception as e:
@@ -156,6 +157,7 @@ async def render_single_clip(
     framing_mode: str = "presentation_fit",
     audio_mode: str = "original",
     hook_offset_sec: float = 0.0,
+    ducking_volume: float = 0.15,
 ):
     """Render a single clip with specified framing mode, visual hook, and audio mode.
 
@@ -172,6 +174,7 @@ async def render_single_clip(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     mode = (audio_mode or "original").lower().strip()
     offset = max(0.0, float(hook_offset_sec or 0.0))
+    duck_vol = max(0.0, min(1.0, float(ducking_volume if ducking_volume is not None else 0.15)))
     badge_start = offset if mode in ("custom_voiceover", "voiceover", "full_voiceover") else 0.0
     badge_end = badge_start + 2.8
 
@@ -277,7 +280,7 @@ async def render_single_clip(
         cmd.extend(["-i", str(hook_audio_path)])
         cmd.extend([
             "-filter_complex",
-            f"{v_filter};[0:a]volume='if(lt(t,{hook_duck_sec:.2f}),0.15,1.0)':eval=frame[ducked];[1:a]apad=pad_len=0[hk];[ducked][hk]amix=inputs=2:duration=first:dropout_transition=2[a]",
+            f"{v_filter};[0:a]volume='if(lt(t,{hook_duck_sec:.2f}),{duck_vol:.2f},1.0)':eval=frame[ducked];[1:a]apad=pad_len=0[hk];[ducked][hk]amix=inputs=2:duration=first:dropout_transition=2[a]",
             "-map", "[v]",
             "-map", "[a]",
         ])
@@ -293,7 +296,7 @@ async def render_single_clip(
         else:
             hk_filter = "[1:a]apad=pad_len=0[hk]"
 
-        duck_filter = f"[0:a]volume='if(between(t,{duck_start:.2f},{duck_end:.2f}),0.15,1.0)':eval=frame[ducked]"
+        duck_filter = f"[0:a]volume='if(between(t,{duck_start:.2f},{duck_end:.2f}),{duck_vol:.2f},1.0)':eval=frame[ducked]"
         cmd.extend([
             "-filter_complex",
             f"{v_filter};{duck_filter};{hk_filter};[ducked][hk]amix=inputs=2:duration=first:dropout_transition=2[a]",

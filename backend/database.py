@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS clips (
     storyboard_paths TEXT,
     audio_mode      TEXT DEFAULT 'original',
     hook_offset_sec REAL DEFAULT 0.0,
+    ducking_volume  REAL DEFAULT 0.15,
+    tags            TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -117,6 +119,8 @@ async def init_db():
             ("storyboard_paths", "TEXT"),
             ("audio_mode", "TEXT DEFAULT 'original'"),
             ("hook_offset_sec", "REAL DEFAULT 0.0"),
+            ("ducking_volume", "REAL DEFAULT 0.15"),
+            ("tags", "TEXT"),
         ]
         cursor = await db.execute("PRAGMA table_info(clips)")
         existing_cols = {row["name"] for row in await cursor.fetchall()}

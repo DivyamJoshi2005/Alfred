@@ -53,6 +53,8 @@ class ClipResponse(BaseModel):
     storyboard_paths: Optional[str] = None
     audio_mode: Optional[str] = "original"
     hook_offset_sec: Optional[float] = 0.0
+    ducking_volume: Optional[float] = 0.15
+    tags: Optional[str] = None
     created_at: str
 
 
@@ -65,6 +67,8 @@ class ClipUpdate(BaseModel):
     framing_mode: Optional[str] = None
     audio_mode: Optional[str] = None
     hook_offset_sec: Optional[float] = None
+    ducking_volume: Optional[float] = None
+    tags: Optional[str] = None
 
 
 class ClipRerenderRequest(BaseModel):
@@ -75,6 +79,8 @@ class ClipRerenderRequest(BaseModel):
     audio_mode: Optional[str] = "original"            # "original" | "intro_hook" | "custom_voiceover" | "preroll" | "voiceover"
     hook_text: Optional[str] = None
     hook_offset_sec: Optional[float] = 0.0            # Offset in seconds from clip start to trigger hook voiceover
+    ducking_volume: Optional[float] = 0.15            # Original sound volume attenuation level during voiceover (0.0 to 1.0)
+    tags: Optional[str] = None
     voice_preset: Optional[str] = None                # If omitted, uses active sound profile from Settings
     use_cloned_voice: Optional[bool] = None           # If omitted, uses active sound profile from Settings
     reference_sample_name: Optional[str] = None
