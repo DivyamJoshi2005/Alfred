@@ -69,10 +69,13 @@ class InstagramUploader(BaseUploader):
                 await file_input.set_input_files(str(video_file))
                 await random_delay(3.0, 5.0)
 
+                dialog = page.get_by_role("dialog")
+                await dialog.wait_for(state="visible", timeout=25000)
+
                 # Dismiss any initial modal notice (e.g. "Video posts are now shared as reels")
                 for _ in range(3):
                     try:
-                        ok_btn = page.locator("button:has-text('OK'), div[role='button']:has-text('OK'), button:has-text('Got it')").first
+                        ok_btn = dialog.locator("button:has-text('OK'), div[role='button']:has-text('OK'), button:has-text('Got it')").first
                         if await ok_btn.count() > 0 and await ok_btn.is_visible():
                             await ok_btn.click(force=True)
                             await random_delay(1.0, 2.0)
@@ -83,42 +86,58 @@ class InstagramUploader(BaseUploader):
                 for step in range(2):
                     # Check for overlay notices before proceeding
                     try:
-                        ok_btn = page.locator("button:has-text('OK'), div[role='button']:has-text('OK'), button:has-text('Got it')").first
+                        ok_btn = dialog.locator("button:has-text('OK'), div[role='button']:has-text('OK'), button:has-text('Got it')").first
                         if await ok_btn.count() > 0 and await ok_btn.is_visible():
                             await ok_btn.click(force=True)
                             await random_delay(1.0, 2.0)
                     except Exception:
                         pass
 
-                    next_selector = "div[role='button']:has-text('Next'), button:has-text('Next')"
-                    next_btn = page.locator(next_selector).first
+                    next_btn = dialog.get_by_role("button", name="Next", exact=True)
                     await next_btn.wait_for(state="visible", timeout=20000)
-                    if await next_btn.count() > 0:
-                        await human_click(page, next_selector)
-                        await random_delay(2.0, 3.5)
+                    await next_btn.click(force=True)
+                    await random_delay(2.0, 3.5)
 
                 # Add caption
-                caption_selector = "div[aria-label*='Write a caption'], div[role='textbox']"
-                caption_area = page.locator(caption_selector).first
+                caption_area = dialog.locator("div[aria-label*='Write a caption'], div[role='textbox']").first
                 if await caption_area.count() > 0:
-                    await human_type(page, caption_selector, caption)
+                    try:
+                        await caption_area.fill(caption)
+                    except Exception:
+                        await human_type(page, "div[aria-label*='Write a caption'], div[role='textbox']", caption)
                     await random_delay(1.0, 2.0)
 
-                # Share
-                share_selector = "div[role='button']:has-text('Share'), button:has-text('Share')"
-                share_btn = page.locator(share_selector).first
+                # Click the real Share button inside dialog
+                share_btn = dialog.get_by_role("button", name="Share", exact=True)
                 await share_btn.wait_for(state="visible", timeout=20000)
-                if await share_btn.count() > 0:
-                    await human_click(page, share_selector)
+                await share_btn.click(force=True)
+                print("[InstagramUploader] Clicked Share button inside dialog, awaiting upload confirmation...")
 
-                    # Wait for share confirmation or modal close
+                # Wait for Instagram to finish uploading and show confirmation
+                shared_confirmed = False
+                for _ in range(18):  # Poll up to 90 seconds (18 * 5s)
+                    await asyncio.sleep(5.0)
                     try:
-                        await page.wait_for_selector(
-                            "text='Your reel has been shared', text='Your post has been shared', text='Reel shared', text='Post shared'",
-                            timeout=45000,
-                        )
+                        body_text = await page.evaluate("() => document.body.innerText")
+                        if any(phrase in body_text for phrase in [
+                            "Your reel has been shared",
+                            "Your post has been shared",
+                            "Reel shared",
+                            "Post shared",
+                            "Shared reel"
+                        ]):
+                            shared_confirmed = True
+                            print("[InstagramUploader] Confirmed reel shared on Instagram!")
+                            break
+                        if await dialog.count() == 0:
+                            shared_confirmed = True
+                            print("[InstagramUploader] Dialog closed, upload complete.")
+                            break
                     except Exception:
-                        await random_delay(5.0, 8.0)
+                        pass
+
+                if not shared_confirmed:
+                    raise RuntimeError("Instagram upload timed out waiting for 'Your reel has been shared' confirmation.")
 
                 return {
                     "success": True,
