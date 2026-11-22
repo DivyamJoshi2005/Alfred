@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import type { Clip } from '../lib/types'
 import { formatTime, cn } from '../lib/utils'
+import { getApiBase } from '../lib/api'
 
 interface ClipTimelineEditorProps {
   clip: Clip
@@ -124,7 +125,7 @@ export function ClipTimelineEditor({
   // Load actual hook duration if audio exists
   useEffect(() => {
     if (clip.hook_audio_path) {
-      const audio = new Audio(`/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`)
+      const audio = new Audio(`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`)
       audio.onloadedmetadata = () => {
         if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
           setHookDuration(Math.max(1.0, Math.round(audio.duration * 10) / 10))
@@ -159,10 +160,10 @@ export function ClipTimelineEditor({
   // In 'rendered' mode: streams rendered short with cache-busting timestamp
   const activeVideoSrc = React.useMemo(() => {
     if (previewMode === 'rendered' && renderedPath) {
-      return `/api/media?path=${encodeURIComponent(renderedPath)}&t=${renderTimestamp || clip.created_at || '1'}`
+      return `${getApiBase()}/api/media?path=${encodeURIComponent(renderedPath)}&t=${renderTimestamp || clip.created_at || '1'}`
     }
     // Live mode uses source video with zero baked-in voiceovers
-    return `/api/media?path=${encodeURIComponent(videoPath)}`
+    return `${getApiBase()}/api/media?path=${encodeURIComponent(videoPath)}`
   }, [previewMode, renderedPath, renderTimestamp, clip.created_at, videoPath])
 
   // Seek video directly: Allows moving ANYWHERE across the entire video freely!
@@ -410,7 +411,7 @@ export function ClipTimelineEditor({
       {clip.hook_audio_path && (
         <audio
           ref={hookAudioRef}
-          src={`/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`}
+          src={`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`}
           preload="auto"
         />
       )}
@@ -744,7 +745,7 @@ export function ClipTimelineEditor({
               {storyboardFrames.map((frame, idx) => (
                 <img
                   key={idx}
-                  src={`/api/media?path=${encodeURIComponent(frame)}`}
+                  src={`${getApiBase()}/api/media?path=${encodeURIComponent(frame)}`}
                   alt=""
                   className="h-full flex-1 object-cover grayscale"
                 />
@@ -1210,7 +1211,7 @@ export function ClipTimelineEditor({
                   <span className="text-[10px] text-stone-400">Audio Preview:</span>
                   <audio
                     controls
-                    src={`/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`}
+                    src={`${getApiBase()}/api/media?path=${encodeURIComponent(clip.hook_audio_path)}`}
                     className="h-7 w-48 invert hue-rotate-180"
                   />
                 </div>

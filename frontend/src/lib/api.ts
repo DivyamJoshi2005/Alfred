@@ -1,9 +1,24 @@
 // Lightweight API client for the Alfred backend
 
-const BASE = ''  // Vite proxy handles /api -> backend
+export const isTauriEnv = (): boolean => {
+  return typeof window !== 'undefined' && (
+    '__TAURI_INTERNALS__' in window ||
+    window.location.hostname === 'tauri.localhost' ||
+    window.location.protocol === 'tauri:'
+  )
+}
+
+export const getApiBase = (): string => {
+  return isTauriEnv() ? 'http://127.0.0.1:8741' : ''
+}
+
+export const mediaUrl = (path: string, extra?: string): string => {
+  const base = getApiBase()
+  return `${base}/api/media?path=${encodeURIComponent(path)}${extra ? `&${extra}` : ''}`
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
   })
@@ -58,7 +73,7 @@ export const jobs = {
       }
 
       xhr.onerror = () => reject(new Error('Network error during upload'))
-      xhr.open('POST', `${BASE}/api/jobs/upload`)
+      xhr.open('POST', `${getApiBase()}/api/jobs/upload`)
       xhr.send(form)
     })
   },
@@ -171,7 +186,7 @@ export const settings = {
   uploadVoiceSample: async (file: File, sampleName = 'my_voice') => {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`/api/settings/voice-sample?sample_name=${encodeURIComponent(sampleName)}`, {
+    const res = await fetch(`${getApiBase()}/api/settings/voice-sample?sample_name=${encodeURIComponent(sampleName)}`, {
       method: 'POST',
       body: form,
     })

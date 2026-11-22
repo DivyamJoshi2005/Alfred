@@ -21,7 +21,7 @@ import {
   Zap,
   Upload
 } from 'lucide-react'
-import { jobs as jobsApi, clips as clipsApi, schedule as scheduleApi, settings as settingsApi } from '../lib/api'
+import { jobs as jobsApi, clips as clipsApi, schedule as scheduleApi, settings as settingsApi, getApiBase } from '../lib/api'
 import type { Job, Clip } from '../lib/types'
 import { formatTime, formatDateTimeLocalInput, cn } from '../lib/utils'
 import { Modal } from '../components/Modal'
@@ -625,7 +625,7 @@ export function ReviewPage() {
                                       {storyboardFrames.map((framePath, fIdx) => (
                                         <div key={fIdx} className="relative rounded-md overflow-hidden border border-border group bg-black/5 aspect-video">
                                           <img
-                                            src={`/api/media?path=${encodeURIComponent(framePath)}`}
+                                            src={`${getApiBase()}/api/media?path=${encodeURIComponent(framePath)}`}
                                             alt={`Visual hook at +${fIdx}s`}
                                             className="w-full h-full object-cover transition-transform group-hover:scale-105"
                                           />
@@ -808,7 +808,7 @@ export function ReviewPage() {
           <div className="space-y-4">
             <div className="aspect-9/16 max-h-[60vh] mx-auto bg-black rounded-lg overflow-hidden flex items-center justify-center shadow-lg">
               <video
-                src={`/api/media?path=${encodeURIComponent(previewClip.output_path || '')}&t=${renderTimestamps[previewClip.id] || previewClip.created_at || '1'}`}
+                src={`${getApiBase()}/api/media?path=${encodeURIComponent(previewClip.output_path || '')}&t=${renderTimestamps[previewClip.id] || previewClip.created_at || '1'}`}
                 controls
                 autoPlay
                 className="w-full h-full object-contain"

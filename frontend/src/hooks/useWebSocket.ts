@@ -18,8 +18,17 @@ export function useWebSocket(onMessage: WSHandler) {
     function connect() {
       if (isDisposed) return
 
+      const isTauri = typeof window !== 'undefined' && (
+        '__TAURI_INTERNALS__' in window ||
+        window.location.hostname === 'tauri.localhost' ||
+        window.location.protocol === 'tauri:'
+      )
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(`${protocol}//${location.host}/ws`)
+      const wsUrl = isTauri
+        ? 'ws://127.0.0.1:8741/ws'
+        : `${protocol}//${location.host}/ws`
+
+      ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
