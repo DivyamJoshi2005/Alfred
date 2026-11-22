@@ -80,23 +80,48 @@ async def random_delay(min_sec: float = 1.0, max_sec: float = 3.0):
 async def human_type(page: Page, selector: str, text: str, min_delay_ms: int = 40, max_delay_ms: int = 120):
     """Type text character-by-character with variable cadence."""
     element = page.locator(selector).first
-    await element.click()
-    await random_delay(0.2, 0.5)
+    try:
+        await element.click(timeout=4000)
+    except Exception:
+        try:
+            await element.click(force=True, timeout=3000)
+        except Exception:
+            try:
+                await element.focus()
+            except Exception:
+                pass
+    await random_delay(0.2, 0.4)
 
     for char in text:
-        await element.type(char, delay=random.randint(min_delay_ms, max_delay_ms))
+        try:
+            await element.type(char, delay=random.randint(min_delay_ms, max_delay_ms))
+        except Exception:
+            try:
+                await page.keyboard.press(char)
+            except Exception:
+                pass
         # Occasional micro-pause between words
         if char == " " and random.random() < 0.3:
             await random_delay(0.15, 0.35)
 
 
 async def human_click(page: Page, selector: str):
-    """Simulate hovering and clicking an element with human-like delay."""
+    """Simulate hovering and clicking an element with human-like delay, falling back to force click if intercepted."""
     element = page.locator(selector).first
-    await element.hover()
-    await random_delay(0.1, 0.3)
-    await element.click()
-    await random_delay(0.4, 0.9)
+    try:
+        await element.hover(timeout=2000)
+    except Exception:
+        # Hover might be blocked by modal overlay or not strictly necessary
+        pass
+    await random_delay(0.1, 0.25)
+    try:
+        await element.click(timeout=4000)
+    except Exception:
+        try:
+            await element.click(force=True, timeout=4000)
+        except Exception:
+            await element.evaluate("el => el.click()")
+    await random_delay(0.3, 0.7)
 
 
 async def ensure_playwright_browsers():

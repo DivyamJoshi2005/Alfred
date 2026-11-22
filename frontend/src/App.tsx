@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { ProcessPage } from './pages/ProcessPage'
 import { ReviewPage } from './pages/ReviewPage'
@@ -8,17 +8,38 @@ import { SettingsPage } from './pages/SettingsPage'
 import { useWebSocket } from './hooks/useWebSocket'
 import type { WSMessage } from './lib/types'
 
+interface ToastNotification {
+  id: string
+  level: string
+  message: string
+  createdAt: number
+}
+
 export default function App() {
-  const [notifications, setNotifications] = useState<{ id: number; level: string; message: string }[]>([])
+  const [notifications, setNotifications] = useState<ToastNotification[]>([])
   const [wsEvents, setWsEvents] = useState<WSMessage[]>([])
+  const nextNotificationSeq = useRef(0)
 
   const handleWsMessage = useCallback((msg: WSMessage) => {
     setWsEvents(prev => [...prev.slice(-50), msg])
 
     if (msg.type === 'notification') {
-      const id = Date.now()
-      setNotifications(prev => [...prev, { id, level: msg.level, message: msg.message }])
-      setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000)
+      const now = Date.now()
+      const seq = ++nextNotificationSeq.current
+      const id = `${now}-${seq}-${Math.random().toString(36).slice(2, 8)}`
+
+      setNotifications(prev => {
+        // Prevent toast duplication if exact same message arrived within 2 seconds
+        const isDuplicate = prev.some(
+          n => n.message === msg.message && now - n.createdAt < 2000
+        )
+        if (isDuplicate) return prev
+        return [...prev, { id, level: msg.level, message: msg.message, createdAt: now }]
+      })
+
+      setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== id))
+      }, 5000)
     }
   }, [])
 

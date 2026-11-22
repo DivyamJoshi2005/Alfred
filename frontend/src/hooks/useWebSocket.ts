@@ -10,23 +10,31 @@ export function useWebSocket(onMessage: WSHandler) {
   handlerRef.current = onMessage
 
   useEffect(() => {
-    let ws: WebSocket
-    let pingInterval: ReturnType<typeof setInterval>
-    let reconnectTimeout: ReturnType<typeof setTimeout>
+    let ws: WebSocket | null = null
+    let pingInterval: ReturnType<typeof setInterval> | null = null
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let isDisposed = false
 
     function connect() {
+      if (isDisposed) return
+
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
       ws = new WebSocket(`${protocol}//${location.host}/ws`)
       wsRef.current = ws
 
       ws.onopen = () => {
+        if (isDisposed) {
+          ws?.close()
+          return
+        }
         setConnected(true)
         pingInterval = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) ws.send('ping')
+          if (ws?.readyState === WebSocket.OPEN) ws.send('ping')
         }, 30_000)
       }
 
       ws.onmessage = (e) => {
+        if (isDisposed) return
         try {
           const msg = JSON.parse(e.data) as WSMessage
           handlerRef.current(msg)
@@ -34,20 +42,28 @@ export function useWebSocket(onMessage: WSHandler) {
       }
 
       ws.onclose = () => {
+        if (pingInterval) clearInterval(pingInterval)
+        if (isDisposed) return
         setConnected(false)
-        clearInterval(pingInterval)
         reconnectTimeout = setTimeout(connect, 2000)
       }
 
-      ws.onerror = () => ws.close()
+      ws.onerror = () => {
+        if (isDisposed) return
+        ws?.close()
+      }
     }
 
     connect()
 
     return () => {
-      clearInterval(pingInterval)
-      clearTimeout(reconnectTimeout)
-      ws?.close()
+      isDisposed = true
+      if (pingInterval) clearInterval(pingInterval)
+      if (reconnectTimeout) clearTimeout(reconnectTimeout)
+      if (ws) {
+        ws.onclose = null
+        ws.close()
+      }
     }
   }, [])
 

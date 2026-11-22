@@ -21,7 +21,9 @@ class InstagramUploader(BaseUploader):
                 await random_delay(1.5, 3.0)
                 if "accounts/login" in page.url:
                     return False
-                feed = await page.query_selector("svg[aria-label='Home'], svg[aria-label='New post']")
+                feed = await page.query_selector(
+                    "svg[aria-label='Home'], svg[aria-label='New post'], svg[aria-label='Create'], a[href*='/direct/'], span:has-text('Create')"
+                )
                 return feed is not None
         except Exception as e:
             print(f"[InstagramUploader] Login check failed: {e}")
@@ -55,9 +57,10 @@ class InstagramUploader(BaseUploader):
                     }
 
                 # Click Create / New post
-                new_post_btn = page.locator("svg[aria-label='New post'], [aria-label='New post']").first
+                new_post_selector = "svg[aria-label='New post'], [aria-label='New post'], svg[aria-label='Create'], span:has-text('Create')"
+                new_post_btn = page.locator(new_post_selector).first
                 if await new_post_btn.count() > 0:
-                    await new_post_btn.click()
+                    await human_click(page, new_post_selector)
                     await random_delay(1.5, 2.5)
 
                 # Set file
@@ -66,23 +69,56 @@ class InstagramUploader(BaseUploader):
                 await file_input.set_input_files(str(video_file))
                 await random_delay(3.0, 5.0)
 
-                # Step through Next buttons
-                for _ in range(2):
-                    next_btn = page.locator("div[role='button']:has-text('Next')").first
+                # Dismiss any initial modal notice (e.g. "Video posts are now shared as reels")
+                for _ in range(3):
+                    try:
+                        ok_btn = page.locator("button:has-text('OK'), div[role='button']:has-text('OK'), button:has-text('Got it')").first
+                        if await ok_btn.count() > 0 and await ok_btn.is_visible():
+                            await ok_btn.click(force=True)
+                            await random_delay(1.0, 2.0)
+                    except Exception:
+                        pass
+
+                # Step through Next buttons (1: Crop/Ratio, 2: Filter/Edit)
+                for step in range(2):
+                    # Check for overlay notices before proceeding
+                    try:
+                        ok_btn = page.locator("button:has-text('OK'), div[role='button']:has-text('OK'), button:has-text('Got it')").first
+                        if await ok_btn.count() > 0 and await ok_btn.is_visible():
+                            await ok_btn.click(force=True)
+                            await random_delay(1.0, 2.0)
+                    except Exception:
+                        pass
+
+                    next_selector = "div[role='button']:has-text('Next'), button:has-text('Next')"
+                    next_btn = page.locator(next_selector).first
+                    await next_btn.wait_for(state="visible", timeout=20000)
                     if await next_btn.count() > 0:
-                        await human_click(page, "div[role='button']:has-text('Next')")
-                        await random_delay(1.5, 3.0)
+                        await human_click(page, next_selector)
+                        await random_delay(2.0, 3.5)
 
                 # Add caption
-                caption_area = page.locator("div[aria-label*='Write a caption']").first
+                caption_selector = "div[aria-label*='Write a caption'], div[role='textbox']"
+                caption_area = page.locator(caption_selector).first
                 if await caption_area.count() > 0:
-                    await human_type(page, "div[aria-label*='Write a caption']", caption)
+                    await human_type(page, caption_selector, caption)
+                    await random_delay(1.0, 2.0)
 
                 # Share
-                share_btn = page.locator("div[role='button']:has-text('Share')").first
+                share_selector = "div[role='button']:has-text('Share'), button:has-text('Share')"
+                share_btn = page.locator(share_selector).first
+                await share_btn.wait_for(state="visible", timeout=20000)
                 if await share_btn.count() > 0:
-                    await human_click(page, "div[role='button']:has-text('Share')")
-                    await random_delay(4.0, 8.0)
+                    await human_click(page, share_selector)
+
+                    # Wait for share confirmation or modal close
+                    try:
+                        await page.wait_for_selector(
+                            "text='Your reel has been shared', text='Your post has been shared', text='Reel shared', text='Post shared'",
+                            timeout=45000,
+                        )
+                    except Exception:
+                        await random_delay(5.0, 8.0)
 
                 return {
                     "success": True,
