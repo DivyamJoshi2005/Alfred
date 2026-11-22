@@ -1,118 +1,48 @@
 # ⚙️ Alfred Backend & Local AI Studio
 
-> Asynchronous FastAPI backend daemon, local AI model runtime, and media assembly engine for Alfred.
-
-Alfred transforms long-form horizontal videos (keynotes, tech talks, podcasts, educational lectures) into high-retention 9:16 vertical shorts—**100% locally on-device**, with zero cloud API dependencies, zero telemetry, and complete data privacy.
+> **The local Python server, AI engine, and media renderer powering Alfred.**  
+> Everything runs on your machine: speech-to-text, viral highlight detection, voice generation, and vertical video cropping.
 
 ---
 
 ## 📑 Table of Contents
 
-- [Overview & Architecture](#overview-architecture)
-- [Local AI Model Fleet](#local-ai-model-fleet)
-- [Core Pipeline Modules](#core-pipeline-modules)
-  - [6-Stage AI Extraction Pipeline Flow](#6-stage-ai-extraction-pipeline-flow)
-  - [1. Demuxing & Transcription (`transcriber.py`)](#1-demuxing-transcription-transcriberpy)
-  - [2. Multimodal Hook & Viral Scoring (`multimodal_analyzer.py`)](#2-multimodal-hook-viral-scoring-multimodalanalyzerpy)
-  - [3. Hook & Headline Generation (`hook_generator.py`)](#3-hook-headline-generation-hookgeneratorpy)
-  - [4. Voice Synthesis & Cloning (`tts.py` & `voice_cloner.py`)](#4-voice-synthesis-cloning-ttspy-voiceclonerpy)
+- [What Does the Backend Do?](#what-does-the-backend-do)
+- [How the AI Pipeline Works Step-by-Step](#how-the-ai-pipeline-works-step-by-step)
+- [The 5 Local AI Models](#the-5-local-ai-models)
+- [Tour of the Pipeline Code](#tour-of-the-pipeline-code)
+  - [1. Audio Demuxing & Transcription (`transcriber.py`)](#1-audio-demuxing-transcription-transcriberpy)
+  - [2. Finding Highlights (`multimodal_analyzer.py`)](#2-finding-highlights-multimodalanalyzerpy)
+  - [3. Writing Hooks & Headlines (`hook_generator.py`)](#3-writing-hooks-headlines-hookgeneratorpy)
+  - [4. Generating Voiceovers (`tts.py` & `voice_cloner.py`)](#4-generating-voiceovers-ttspy-voiceclonerpy)
   - [5. Face Tracking & Smart Cropping (`smart_crop.py`)](#5-face-tracking-smart-cropping-smartcroppy)
-  - [6. Precision Video Assembly & Audio Ducking (`assembler.py`)](#6-precision-video-assembly-audio-ducking-assemblerpy)
+  - [6. Precision FFmpeg Video Slicer (`assembler.py`)](#6-precision-ffmpeg-video-slicer-assemblerpy)
   - [7. Pipeline Orchestration (`orchestrator.py`)](#7-pipeline-orchestration-orchestratorpy)
-- [Stealth Social Distribution & Playwright Automation](#stealth-social-distribution-playwright-automation)
-  - [Instant "Publish Now" vs Scheduled Queue](#instant-publish-now-vs-scheduled-queue)
-  - [Distribution & Retry State Machine](#distribution-retry-state-machine)
-  - [Anti-Bot Fingerprint Hardening & Stealth Profiles](#anti-bot-fingerprint-hardening-stealth-profiles)
-  - [Self-Healing Browser Setup & Linux Wayland Support](#self-healing-browser-setup-linux-wayland-support)
-  - [Queue Management & Failure Recovery](#queue-management-failure-recovery)
-- [Database Architecture & WAL Mode](#database-architecture-wal-mode)
-  - [Entity-Relationship Diagram](#entity-relationship-diagram)
-  - [Table Schemas](#table-schemas)
-- [Complete REST & WebSocket API Surface](#complete-rest-websocket-api-surface)
-- [Backend Directory Layout](#backend-directory-layout)
-- [Local Development & Setup](#local-development-setup)
-- [Troubleshooting & Diagnostics](#troubleshooting-diagnostics)
+- [How Automated Publishing Works](#how-automated-publishing-works)
+- [Database Schema (SQLite in WAL Mode)](#database-schema-sqlite-in-wal-mode)
+- [API Reference](#api-reference)
+- [Quick Local Setup with uv](#quick-local-setup-with-uv)
+- [Troubleshooting & Common Fixes](#troubleshooting-common-fixes)
 
 ---
 
-## 🏛️ Overview & Architecture
+## 💡 What Does the Backend Do?
 
-The backend daemon is built around an asynchronous, non-blocking state machine running on **FastAPI**, **uvicorn**, and **asyncio**. It exposes both REST endpoints and a real-time WebSocket telemetry gateway (`/ws`), while coordinating local neural network inference and FFmpeg filtergraphs in background worker pools.
+The backend is a fast Python service built with **FastAPI** and **asyncio**. When you drop a video into Alfred, the backend coordinates all the background work:
 
-```mermaid
-flowchart TD
-    classDef gateway fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
-    classDef worker fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
-    classDef ai fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
-    classDef media fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
-    classDef db fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
-    classDef social fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
+1. **Strips the audio** from the video file into a clean 16kHz WAV format.
+2. **Listens and transcribes** every word with exact timestamps using local Whisper.
+3. **Finds the best 30–60 second clips** by looking for spikes in audio volume (laughter, applause, energy) and visual movement.
+4. **Writes a 3-second hook** using a small local LLM (Llama 3.2 1B).
+5. **Speaks the hook** using local voice synthesis (Kokoro-82M), or matches your own voice clone.
+6. **Crops and renders** the vertical 9:16 video using FFmpeg without cutting off slides or presentation text.
+7. **Uploads to social media** via an automated browser (Playwright) using your logged-in cookies.
 
-    subgraph Inbound ["Inbound Gateway (:8741)"]
-        HTTP["FastAPI REST Endpoints\n(/api/jobs, /api/clips, /api/schedule, /api/accounts)"]:::gateway
-        WS["WebSocket Telemetry Gateway\n(ws://127.0.0.1:8741/ws)"]:::gateway
-    end
-
-    subgraph Workers ["Async Task Workers"]
-        Orchestrator["Pipeline Orchestrator\n(6-Stage Automated AI Extraction)"]:::worker
-        ReRenderer["Fast Re-Render Engine\n(Targeted FFmpeg seek slices in ~15s)"]:::worker
-        Dispatcher["Scheduler Heartbeat Worker\n(Polls due queue every 30-60s)"]:::worker
-    end
-
-    subgraph AI_Engine ["Local AI Processing Fleet"]
-        Demux["Audio Demuxer (16kHz Mono WAV)"]:::media
-        Whisper["faster-whisper (CTranslate2 INT8 + Silero VAD)"]:::ai
-        Analyzer["Multimodal Analyzer (Optical Flow + Audio RMS)"]:::ai
-        Llama["Llama 3.2 1B Instruct (GGUF Q4_K_M)"]:::ai
-        Kokoro["Kokoro-82M ONNX + OpenVoice v2"]:::ai
-        Assembler["FFmpeg 9 Filtergraph Muxer"]:::media
-    end
-
-    subgraph Storage ["SQLite Persistence (WAL Mode)"]
-        T_Jobs[("jobs & transcripts")]:::db
-        T_Clips[("clips (scores, timecodes, modes, storyboards)")]:::db
-        T_Schedule[("scheduled_posts (ISO 8601 UTC, status, attempts)")]:::db
-        T_Accounts[("social_accounts (persistent Chromium profiles)")]:::db
-    end
-
-    subgraph Outbound ["Stealth Distribution Engine"]
-        Playwright["Stealth Playwright Automation\n(Self-healing Chromium engine)"]:::social
-        Social["YouTube Shorts / IG Reels / X"]:::social
-    end
-
-    HTTP -->|Submit Video| Orchestrator
-    HTTP -->|Fine-Tune Clip| ReRenderer
-    HTTP -->|Schedule / Publish Now| T_Schedule
-    Orchestrator --> Demux --> Whisper --> Analyzer --> Llama --> Kokoro --> Assembler
-    Assembler --> T_Clips
-    ReRenderer --> Assembler
-    Orchestrator -.->|Progress Events 0-100%| WS
-    Dispatcher -->|Check due scheduled_at <= now| T_Schedule
-    Dispatcher -->|Launch Session| Playwright
-    Playwright --> Social
-```
+All progress is streamed live to the frontend in real time via WebSockets (`ws://127.0.0.1:8741/ws`).
 
 ---
 
-## 🧠 Local AI Model Fleet
-
-All 5 local AI models operate completely offline without cloud API keys:
-
-| Model | Architecture | Size | Role | Runtime | Hardware Optimization |
-|---|---|---|---|---|---|
-| **Whisper Base.en / Small.en** | CTranslate2 INT8 | ~140 MB / ~460 MB | Speech-to-text with word-level timestamps & Silero VAD | `faster-whisper` | CPU AVX2/AVX-512 SIMD & CUDA |
-| **Llama 3.2 1B Instruct** | Q4_K_M GGUF | 771 MB | Viral highlight ranking & contextual attention hook writing | `llama-cpp-python` | Metal / CUDA / CPU BLAS |
-| **Kokoro-82M** | StyleTTS2 ONNX | 311 MB | Ultra-fast 24kHz mono voice narration | `onnxruntime` | CPU & CUDA Execution Providers |
-| **YOLOv8n-Face** | Dynamic 640×640 ONNX | 12.1 MB | Kinetic 9:16 smart cropping & face tracking | `onnxruntime` | Multithreaded frame inference |
-| **OpenVoice v2** | PyTorch Checkpoint | 126 MB | Reference speaker tone converter & voice cloning | PyTorch / NumPy | CPU & CUDA |
-
-> Check local model readiness anytime via `GET /api/settings/models`.
-
----
-
-## ⚙️ Core Pipeline Modules
-
-### 6-Stage AI Extraction Pipeline Flow
+## 🔄 How the AI Pipeline Works Step-by-Step
 
 ```mermaid
 flowchart TD
@@ -125,113 +55,118 @@ flowchart TD
     classDef mux fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
     classDef out fill:#0f172a,stroke:#22c55e,stroke-width:1.5px,color:#f0fdf4;
 
-    VideoInput["Raw 16:9 Master Video (.mp4, .mov, .mkv)"]:::input --> S1
-    
-    subgraph Stage1 ["Stage 1: Audio Demuxing"]
-        S1["FFmpeg Stream Demux\n(-vn -ac 1 -ar 16000)\nOutput: 16kHz Mono WAV"]:::demux
+    RawVideo["Raw 16:9 Video File (.mp4, .mov, .mkv)"]:::input --> Step1
+
+    subgraph Step1_Demux ["Step 1: Audio Demuxing"]
+        Step1["FFmpeg strips audio stream\n(Output: 16kHz mono WAV)"]:::demux
     end
 
-    subgraph Stage2 ["Stage 2: Speech-to-Text"]
-        S2["faster-whisper (CTranslate2 INT8)\nSilero VAD (Noise/Music Filter)\n5-Path Beam Search\nOutput: Word-level timestamps"]:::whisper
+    subgraph Step2_Transcribe ["Step 2: Speech-to-Text"]
+        Step2["faster-whisper transcribes every word\nSilero VAD ignores background music & noise\nOutput: Word-level timestamps"]:::whisper
     end
 
-    subgraph Stage3 ["Stage 3: Multimodal Hook & Viral Scoring"]
-        S3A["Optical Flow Motion Energy (2 fps)"]:::vision
-        S3B["Dynamic Audio RMS Spikes (Laughter, Swells)"]:::vision
-        S3C["Scene-Cut Boundary Anchoring"]:::vision
-        S3D["4-Frame Storyboards (+0s, +1s, +2s, +3s)"]:::vision
-        S3E["Calibrated Retention Index (88%-96%)"]:::vision
-        S3A & S3B & S3C --> S3E
+    subgraph Step3_Rank ["Step 3: Highlight & Retention Analysis"]
+        Step3A["Visual Motion Energy (2 fps)"]:::vision
+        Step3B["Audio Volume Contrast (Applause, Laughter)"]:::vision
+        Step3C["Camera Shot Transitions"]:::vision
+        Step3D["Captures 4-Frame Storyboard Proofs"]:::vision
+        Step3A & Step3B & Step3C --> Step3Score["Predicted Retention Score: 88% - 96%"]:::vision
     end
 
-    subgraph Stage4 ["Stage 4: Attention Hook Synthesis"]
-        S4["Llama 3.2 1B Instruct (GGUF)\nSpoken Hook + Upper 22% Safe Headline"]:::llama
+    subgraph Step4_Hook ["Step 4: Hook & Title Generation"]
+        Step4["Llama 3.2 1B writes opening verbal hook\n+ Upper 22% safe visual headline badge"]:::llama
     end
 
-    subgraph Stage5 ["Stage 5: Voice Synthesis & Cloning"]
-        S5A["Kokoro-82M ONNX TTS (24kHz)"]:::tts
-        S5B["OpenVoice v2 Tone Converter (Acoustic Cloner)"]:::tts
-        S5A --> S5B
+    subgraph Step5_Voice ["Step 5: Voiceover Synthesis"]
+        Step5A["Kokoro-82M generates 24kHz voice audio"]:::tts
+        Step5B["Optional: OpenVoice v2 clones your voice timbre"]:::tts
+        Step5A --> Step5B
     end
 
-    subgraph Stage6 ["Stage 6: Multi-Framing & FFmpeg Assembly"]
-        S6A["Framing: Canvas Fit / Stacked Split / Face Focus"]:::mux
-        S6B["Audio: Original / Intro Hook / Custom Voiceover"]:::mux
-        S6C["Sanitized Drawtext Headline Badge"]:::mux
-        S6A & S6B & S6C --> S6Out["Final 1080x1920 MP4 Cutdowns"]:::out
+    subgraph Step6_Assemble ["Step 6: Cropping & Video Assembly"]
+        Step6A["Framing: Canvas Fit / Stacked Split / Face Focus"]:::mux
+        Step6B["Audio: Original / Intro Hook / Custom Placement"]:::mux
+        Step6C["Burns Headline into top safe-zone"]:::mux
+        Step6A & Step6B & Step6C --> Step6Final["Final 1080x1920 Vertical Short"]:::out
     end
 
-    S1 --> S2 --> S3A
-    S2 --> S4
-    S3E --> S4
-    S4 --> S5A
-    S5B --> S6B
-    S3D --> S6A
-    S6Out --> ClipsDB[("clips table in SQLite")]:::input
+    Step1 --> Step2 --> Step3A
+    Step2 --> Step4
+    Step3Score --> Step4
+    Step4 --> Step5A
+    Step5B --> Step6B
+    Step3D --> Step6A
+    Step6Final --> SavedDB[("Saved into local SQLite database")]:::input
 ```
-
-### 1. Demuxing & Transcription (`transcriber.py`)
-- **Direct Stream Extraction**: Extracts master audio as 16kHz mono WAV (`-vn -ac 1 -ar 16000`) in < 1 second.
-- **`faster-whisper` Engine**: Employs CTranslate2 INT8 quantization for fast, accurate speech recognition.
-- **5-Path Beam Search**: Recognizes technical terminology, proper nouns, and fast speakers with high precision.
-- **Silero Voice Activity Detection (VAD)**: Strictly gates transcription to human speech segments, eliminating music hallucinations and silence artifacts.
-- Outputs granular word-level timestamps for frame-accurate clip boundary snapping.
-
-### 2. Multimodal Hook & Viral Scoring (`multimodal_analyzer.py`)
-Analyzes the master video across three parallel sensory dimensions:
-- **Optical Flow Motion Energy**: Samples frames at 2 fps using OpenCV Farneback dense optical flow to detect visual momentum, camera pans, and screen transitions.
-- **Dynamic Audio RMS Spikes**: Analyzes root-mean-square audio energy contrast to catch high-arousal acoustic events (laughter, audience applause, enthusiastic vocal swells, dramatic pauses).
-- **Scene-Cut Boundary Anchoring**: Detects camera shot transitions to anchor clip start points naturally.
-- **4-Frame Visual Hook Storyboards**: Automatically captures storyboard frames at `+0.0s`, `+1.0s`, `+2.0s`, and `+3.0s` to verify the opening visual energy.
-- **Calibrated Retention Index (0–100%)**: Computes a non-linear percentile index where top highlight moments achieve 88%–96% predicted retention, accompanied by clear human-readable narrative rationales.
-
-### 3. Hook & Headline Generation (`hook_generator.py`)
-- Employs local **Llama 3.2 1B Instruct** (`llama-3.2-1b.Q4_K_M.gguf`) to synthesize:
-  - **Spoken Hook**: A natural 1–2 sentence verbal teaser designed to spark curiosity without sounding like clickbait.
-  - **Visual Headline**: A punchy 3–7 word uppercase headline badge placed in the upper 22% safe-zone.
-- Includes a rule-based NLP fallback engine ensuring hook generation succeeds even without local LLM weights.
-
-### 4. Voice Synthesis & Cloning (`tts.py` & `voice_cloner.py`)
-- **Kokoro-82M ONNX**: 82M parameter StyleTTS2 model generating 24kHz studio audio at RTF ~0.10x.
-- **Vocal Presets**: High-fidelity voices including `af_heart`, `af_bella`, `af_nicole`, `am_adam`, and `am_michael`.
-- **In-Browser Reference Voice Recorder**: Record 10–15s reference samples with your microphone directly from Settings (`POST /api/settings/voice-sample`).
-- **OpenVoice v2 Tone Conversion**: Extracts speaker acoustic embeddings from recorded reference samples and transfers personal timbre to synthesized hook narration completely offline.
-
-### 5. Face Tracking & Smart Cropping (`smart_crop.py`)
-- Uses **YOLOv8n-Face ONNX** to detect speaker faces at 2 fps.
-- Computes smoothed horizontal crop windows using a 5-frame moving average window, preventing jarring camera jitter during head movement.
-
-### 6. Precision Video Assembly & Audio Ducking (`assembler.py`)
-Renders broadcast-ready 1080×1920 MP4 files using FFmpeg 9:
-- **3 Presentation Framing Layouts**:
-  - `presentation_fit`: 16:9 canvas centered with dark blurred background fill (0% slide cut off).
-  - `split_screen`: Stacked dual viewports (speaker face top, slides/video bottom).
-  - `face_focus`: Kinetic 9:16 crop tracked by YOLOv8n-face.
-- **3 Audio Master Modes**:
-  - `original`: 100% pure source dialogue with zero voiceover and zero ducking.
-  - `intro_hook`: Spoken hook plays at clip start (`t=0.0s`) with calibrated background ducking to 15% and smooth recovery.
-  - `custom_voiceover`: Timeline-positioned voiceover at user-defined `hook_offset_sec` with dynamic window ducking.
-- **Visual Headline Badge**: Burns uppercase safe-zone headline text into the upper 22% margin, with full sanitization for FFmpeg 9 drawtext special characters (`%` converted to ` PERCENT`, quotes/colons escaped).
-
-### 7. Pipeline Orchestration (`orchestrator.py`)
-Coordinates the 6-stage extraction workflow in an async worker task, updating database records and broadcasting real-time progress events over WebSockets.
 
 ---
 
-## 🚀 Stealth Social Distribution & Playwright Automation
+## 🧠 The 5 Local AI Models
 
-Alfred includes an offline-first social distribution system that bypasses official developer API restrictions, token expirations, and platform developer review processes.
+All models live locally in your `models/` directory or HuggingFace cache:
 
-### Instant "Publish Now" vs Scheduled Queue
-- **⚡ Instant "Publish Now" (`POST /api/schedule/publish-now`)**:
-  - Automatically marks the clip as approved if needed.
-  - Inserts a scheduled post with `scheduled_at = datetime.now(timezone.utc).isoformat()`.
-  - Immediately dispatches a background upload task without waiting for the scheduler polling cycle.
-- **📅 Scheduled Queue (`POST /api/schedule`)**:
-  - Schedules a post for a specific future ISO 8601 UTC timestamp.
-  - The background scheduler (`scheduler/worker.py`) polls every 30–60 seconds and triggers due posts.
+| Model | What it does | Size | Runtime |
+|---|---|---|---|
+| **Whisper (Base / Small)** | Transcribes spoken audio into text with word timestamps and voice-activity filtering. | ~140 – 460 MB | `faster-whisper` (CPU AVX2 / CUDA) |
+| **Llama 3.2 1B Instruct** | Reads transcripts to find the best angle and writes opening hooks and headline badges. | 771 MB | `llama-cpp-python` (GGUF Q4_K_M) |
+| **Kokoro-82M** | Fast local text-to-speech generating natural-sounding narration in 0.5 seconds. | 311 MB | `onnxruntime` (StyleTTS2 architecture) |
+| **YOLOv8n-Face** | Real-time face tracking for talking-head vertical auto-cropping. | 12.1 MB | `onnxruntime` (Dynamic 640x640) |
+| **OpenVoice v2** | Extracts acoustic characteristics from a 10-second mic recording to clone your voice. | 126 MB | PyTorch & NumPy |
 
-### Distribution & Retry State Machine
+---
+
+## 🛠️ Tour of the Pipeline Code
+
+### 1. Audio Demuxing & Transcription (`transcriber.py`)
+- Strips audio into a 16kHz mono WAV in less than a second using direct stream copying:
+  ```bash
+  ffmpeg -y -i input.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
+  ```
+- Feeds the WAV into `faster-whisper`.
+- Uses **Silero Voice Activity Detection (VAD)** to ignore silence, coughs, and background music, preventing the AI from hallucinating words during quiet moments.
+
+### 2. Finding Highlights (`multimodal_analyzer.py`)
+Instead of just counting keywords, Alfred scores video clips across three real-world signals:
+- **Audio volume spikes**: Catches audience laughter, applause, gasps, and passionate speaker delivery.
+- **Visual motion**: Uses optical flow (2 frames per second) to find camera pans, demonstrative hand gestures, and scene changes.
+- **Shot boundaries**: Anchors clip starting points to natural camera cuts.
+- Generates 4 storyboard proof frames (`+0s`, `+1s`, `+2s`, `+3s`) so you can visually verify the hook before rendering.
+
+### 3. Writing Hooks & Headlines (`hook_generator.py`)
+- Uses **Llama 3.2 1B Instruct** to write:
+  - **Spoken Hook**: A natural 1–2 sentence sentence to hook the listener.
+  - **Visual Headline**: A 3-to-7 word uppercase title badge placed in the upper 22% safe-zone (so TikTok/Reels buttons don't block it).
+- Includes a rule-based fallback so it still works if LLM weights are not downloaded.
+
+### 4. Generating Voiceovers (`tts.py` & `voice_cloner.py`)
+- Runs **Kokoro-82M** to create crisp 24kHz audio in half a second.
+- Voices include `Heart` (warm female), `Adam` (confident male), `Bella` (clear & upbeat), and `Michael` (deep studio).
+- If you recorded your voice in Settings, `voice_cloner.py` takes the Kokoro audio and transfers your personal vocal tone onto it.
+
+### 5. Face Tracking & Smart Cropping (`smart_crop.py`)
+- Detects the presenter's face using **YOLOv8n-Face ONNX**.
+- Uses a 5-frame moving average so the camera crop glides smoothly without sudden, jerky jumps.
+
+### 6. Precision FFmpeg Video Slicer (`assembler.py`)
+Renders broadcast-ready 1080×1920 MP4 files:
+- **Framing Modes**:
+  - `presentation_fit`: Keeps 100% of widescreen slides centered with a soft blurred background.
+  - `split_screen`: Speaker head on top, slides on bottom.
+  - `face_focus`: Centered 9:16 crop following the speaker.
+- **Audio Modes**:
+  - `original`: 100% natural speaker voice, zero AI voiceover.
+  - `intro_hook`: AI hook plays at `0.0s` while the video volume dips to 15%, then recovers.
+  - `custom_voiceover`: Voiceover plays at your chosen timeline second.
+- **Fast Re-Rendering**: When you tweak trim points or move the voiceover slider in the review UI, `assembler.py` re-cuts only that single clip in ~15 seconds using targeted FFmpeg seek filters (`-ss`, `-to`).
+
+### 7. Pipeline Orchestration (`orchestrator.py`)
+Runs the 6 stages in an asynchronous background loop and broadcasts live progress percentages (0% → 100%) to the frontend via WebSockets.
+
+---
+
+## 🚀 How Automated Publishing Works
+
+Alfred doesn't require complex API keys. Instead, it uses **Playwright** to open a secure local browser window with your existing login sessions stored in `~/.alfred/chromium_profiles/`.
 
 ```mermaid
 stateDiagram-v2
@@ -239,275 +174,87 @@ stateDiagram-v2
     classDef active fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff
     classDef success fill:#064e3b,stroke:#34d399,color:#ecfdf5
     classDef error fill:#4c0519,stroke:#fb7185,color:#ffe4e6
-    classDef retry fill:#1c1917,stroke:#fbbf24,color:#fef3c7
 
-    [*] --> Scheduled: Schedule for Later (ISO 8601 UTC)
-    [*] --> Publishing: Publish Now (Instant Upload)
+    [*] --> Scheduled: Pick a time on Calendar
+    [*] --> Uploading: Click "Publish Now" (Instant)
 
-    Scheduled --> DueCheck: Scheduler Loop (30-60s heartbeat)
-    DueCheck --> Publishing: datetime(scheduled_at) <= datetime(now)
+    Scheduled --> Uploading: Scheduled time arrives
 
-    Publishing --> LaunchBrowser: Launch Stealth Playwright Context
-    LaunchBrowser --> VerifySession: Check Stored Cookie Auth
+    Uploading --> Complete: Upload succeeded!
+    Uploading --> Failed: Network dropped or session expired
 
-    VerifySession --> PerformUpload: Authenticated
-    VerifySession --> SessionExpired: Session Expired / Not Logged In
+    Failed --> Uploading: Click "Retry Upload"
+    Failed --> Scheduled: Change date/time on Calendar
+    Failed --> [*]: Click "Clear Failed"
 
-    PerformUpload --> Published: Upload Completed
-    PerformUpload --> UploadError: Browser / DOM Error
-    SessionExpired --> UploadError: Needs Authentication
-
-    UploadError --> AutoRetry: attempts < 3
-    AutoRetry --> Publishing: Exponential Backoff (30s)
-
-    UploadError --> Failed: attempts >= 3
-    Failed --> Scheduled: 1-Click "Retry Upload"
-    Failed --> Scheduled: Bulk "Retry All Failed"
-    Failed --> [*]: "Clear Failed" / Delete Post
-
-    Published --> [*]
+    Complete --> [*]
 
     class Scheduled scheduled
-    class Publishing,LaunchBrowser,VerifySession,PerformUpload active
-    class Published success
-    class SessionExpired,UploadError,Failed error
-    class DueCheck,AutoRetry retry
+    class Uploading active
+    class Complete success
+    class Failed error
 ```
 
-### Anti-Bot Fingerprint Hardening & Stealth Profiles
-- **Persistent Browser Profiles**: Profiles and cookies are stored in `~/.alfred/chromium_profiles/{platform}`.
-- **Fingerprint Masking** (`uploaders/stealth.py`):
-  - Hides `navigator.webdriver`.
-  - Mocks `window.chrome`, browser plugins, languages, and notification permissions.
-  - Uses randomized human-like typing cadence (40–120ms per key with natural micro-pauses).
-  - Simulates mouse hover before clicking.
-
-### Self-Healing Browser Setup & Linux Wayland Support
-- **Automatic Self-Healing**: `ensure_playwright_browsers()` automatically detects if Chromium browser binaries are missing and installs them via `playwright install chromium`.
-- **Linux Wayland/X11 Compatibility**: Configures launch arguments (`--ozone-platform-hint=auto`, `--ignore-certificate-errors`, `--no-sandbox`) to run smoothly across KDE Plasma, GNOME, and Linux desktop environments.
-
-### Queue Management & Failure Recovery
-- **Retry Single Failed Post** (`POST /api/schedule/{post_id}/retry`): Resets attempt counter, clears error logs, and triggers an immediate upload.
-- **Retry All Failed Posts** (`POST /api/schedule/retry-all`): Batch recovery for all failed posts after network reconnection.
-- **Clear Failed Records** (`DELETE /api/schedule/failed`): Purges all failed records from the queue.
-- **Automatic Failure Reset**: Updating or rescheduling a failed post via `PATCH /api/schedule/{post_id}` automatically resets status to `scheduled` and clears error logs.
+- **Human-like typing**: Types titles and tags with natural key delays (40–120ms) to prevent bot detection.
+- **Self-Healing browser setup**: `ensure_playwright_browsers()` automatically downloads missing Chromium binaries on demand.
+- **Linux Wayland/X11 compatibility**: Includes flags (`--ozone-platform-hint=auto`, `--no-sandbox`) so it runs smoothly on KDE Plasma, GNOME, and Linux desktops.
 
 ---
 
-## 🗄️ Database Architecture & WAL Mode
+## 🗄️ Database Schema (SQLite in WAL Mode)
 
-Alfred uses an embedded SQLite database with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) located at `~/.alfred/db/alfred.db`:
+Alfred stores all metadata in a local file at `~/.alfred/db/alfred.db` using SQLite with Write-Ahead Logging (`WAL` mode) for fast concurrent reads and writes:
 
-### Entity-Relationship Diagram
-
-```mermaid
-erDiagram
-    JOBS ||--o{ TRANSCRIPTS : "contains"
-    JOBS ||--o{ CLIPS : "generates"
-    CLIPS ||--o{ SCHEDULED_POSTS : "publishes"
-    SOCIAL_ACCOUNTS ||--o{ SCHEDULED_POSTS : "dispatches_to"
-
-    JOBS {
-        string id PK
-        string video_path
-        string video_name
-        string status
-        datetime created_at
-        datetime updated_at
-        string error_msg
-    }
-
-    TRANSCRIPTS {
-        string id PK
-        string job_id FK
-        string full_text
-        string segments
-        string words
-        datetime created_at
-    }
-
-    CLIPS {
-        string id PK
-        string job_id FK
-        int rank
-        float start_time
-        float end_time
-        float duration
-        string transcript_text
-        string hook_text
-        string hook_audio_path
-        string output_path
-        string status
-        float visual_score
-        float audio_score
-        float hook_score
-        float retention_score
-        string storyboard_paths
-        string audio_mode
-        float hook_offset_sec
-    }
-
-    SCHEDULED_POSTS {
-        string id PK
-        string clip_id FK
-        string platform
-        datetime scheduled_at
-        string title
-        string description
-        string tags
-        string status
-        int attempts
-        string last_error
-        datetime created_at
-        datetime updated_at
-    }
-
-    SOCIAL_ACCOUNTS {
-        string id PK
-        string platform UK
-        string profile_path
-        string display_name
-        datetime connected_at
-        datetime last_used_at
-    }
-
-    SETTINGS {
-        string key PK
-        string value
-    }
-```
-
-### Table Schemas
-
-- `jobs`: Video ingestion jobs, original paths, and processing states (`queued`, `transcribing`, `analyzing`, `rendering`, `completed`, `failed`).
-- `transcripts`: Full transcript text, word-level timestamps, and segment data.
-- `clips`: AI-extracted highlight clips, In/Out timecodes, retention scores, storyboard paths, framing mode, audio mode, and hook offset.
-- `scheduled_posts`: Social distribution queue, platform targets, scheduled timestamps in ISO 8601 UTC with `Z`, status (`scheduled`, `uploading`, `uploaded`, `failed`), retry attempts, and error logs.
-- `social_accounts`: Platform browser profile paths, account names, and authentication states.
-- `settings`: Key-value application configuration store.
+- **`jobs`**: Tracks video files, overall status (`queued`, `transcribing`, `rendering`, `completed`), and error messages.
+- **`transcripts`**: Stores full transcript text, segments, and word-level timestamps from Whisper.
+- **`clips`**: Stores extracted clips, start/end timestamps, retention scores, storyboard image paths, framing mode, audio mode, and voiceover offset.
+- **`scheduled_posts`**: Social upload queue with platform targets (YouTube, Instagram, X), scheduled dates in ISO 8601 UTC with `Z`, status (`scheduled`, `uploading`, `uploaded`, `failed`), retry counters, and error logs.
+- **`social_accounts`**: Stores local Chromium profile directories and connected account names.
+- **`settings`**: Key-value settings store for user preferences.
 
 ---
 
-## 📡 Complete REST & WebSocket API Surface
+## 📡 API Reference
 
-### Ingestion & Jobs (`/api/jobs`)
-| Method | Endpoint | Request Body | Description |
-|---|---|---|---|
-| `POST` | `/api/jobs/upload` | Multipart: `file: UploadFile`, `clip_count: int` | Ingest video and initiate processing pipeline |
-| `GET` | `/api/jobs` | — | List all historical ingestion jobs |
-| `GET` | `/api/jobs/{job_id}` | — | Get job progress, status, and clip list |
-| `DELETE`| `/api/jobs/{job_id}` | — | Delete job and remove video files from disk |
-| `POST` | `/api/jobs/{job_id}/cancel` | — | Cancel an active pipeline job |
-
-### Clips & Editorial Deck (`/api/clips`)
-| Method | Endpoint | Request Body | Description |
-|---|---|---|---|
-| `GET` | `/api/clips/{clip_id}` | — | Retrieve clip metadata, scores, and paths |
-| `GET` | `/api/clips/job/{job_id}`| — | Retrieve all candidate clips for a job |
-| `PATCH` | `/api/clips/{clip_id}` | `{status, hook_text, start_time, end_time, audio_mode, hook_offset_sec}` | Update clip approval status, hook text, or trim boundaries |
-| `POST` | `/api/clips/{clip_id}/rerender` | `{start_time, end_time, framing_mode, audio_mode, hook_offset_sec}` | Re-render clip with custom boundaries, framing, or audio ducking |
-| `POST` | `/api/clips/{clip_id}/synthesize-voice` | `{text, voice_preset, use_voice_clone, sample_name}` | Synthesize Kokoro or cloned voiceover track |
-
-### Distribution & Scheduling (`/api/schedule`)
-| Method | Endpoint | Request Body | Description |
-|---|---|---|---|
-| `POST` | `/api/schedule/publish-now` | `{clip_id, platform, title, description, tags}` | **Immediately upload clip right now** in the background |
-| `POST` | `/api/schedule` | `{clip_id, platform, scheduled_at, title, description, tags}` | Schedule a clip for future publication |
-| `GET` | `/api/schedule` | Query: `from_date`, `to_date` | Retrieve scheduled calendar posts |
-| `PATCH` | `/api/schedule/{post_id}` | `{scheduled_at, title, description, tags, status}` | Reschedule post or update metadata (resets failure state) |
-| `POST` | `/api/schedule/{post_id}/retry` | — | Reset failed post to scheduled and trigger immediate upload |
-| `POST` | `/api/schedule/retry-all` | — | Reset all failed posts and trigger immediate uploads |
-| `DELETE`| `/api/schedule/failed` | — | Bulk delete all failed scheduled posts |
-| `DELETE`| `/api/schedule/{post_id}` | — | Cancel and delete a scheduled post |
-
-### Social Accounts & Stealth Auth (`/api/accounts`)
-| Method | Endpoint | Query / Body | Description |
-|---|---|---|---|
-| `GET` | `/api/accounts` | — | List all connected social account profiles |
-| `GET` | `/api/accounts/{platform}/status` | — | Verify whether saved browser session cookies are still authenticated |
-| `POST` | `/api/accounts/{platform}/connect` | Query: `interactive: bool` | Launch visible browser window for manual login and capture session |
-| `DELETE`| `/api/accounts/{platform}` | — | Disconnect platform account and delete local profile |
-
-### Settings & Local AI Studio (`/api/settings`)
-| Method | Endpoint | Request Body | Description |
-|---|---|---|---|
-| `GET` | `/api/settings` | — | Retrieve system configuration and preferences |
-| `POST` | `/api/settings` | Key-value settings object | Update application configuration |
-| `GET` | `/api/settings/models` | — | Retrieve local readiness status of all 5 local AI models |
-| `GET` | `/api/settings/voice-samples` | — | List recorded/uploaded voice cloning reference samples |
-| `POST` | `/api/settings/voice-sample` | Multipart: `file: UploadFile` | Upload or save in-browser mic recording as reference sample |
-| `DELETE`| `/api/settings/voice-samples/{filename}` | — | Delete a stored voice cloning sample |
-
-### Media Streaming & Telemetry
-| Protocol | Endpoint | Description |
+| Method | Route | Description |
 |---|---|---|
-| `GET` | `/api/media?path=...` | Byte-range video and storyboard frame streaming endpoint (`Accept-Ranges: bytes`) |
-| `GET` | `/api/health` | System health check, database status, and uptime |
-| `WS` | `/ws` | Real-time bi-directional pipeline telemetry channel |
+| `POST` | `/api/jobs/upload` | Upload video file and start pipeline |
+| `GET` | `/api/jobs` | List all historical video jobs |
+| `GET` | `/api/jobs/{id}` | Get job status, progress, and clip list |
+| `GET` | `/api/clips/job/{job_id}` | Get clips for a job with scores and storyboard paths |
+| `POST` | `/api/clips/{id}/rerender` | Re-render clip with new trim boundaries, framing, or audio settings |
+| `POST` | `/api/clips/{id}/synthesize-voice` | Generate hook voiceover using Kokoro or cloned voice |
+| `POST` | `/api/schedule/publish-now` | **Immediately upload clip right now** in the background |
+| `POST` | `/api/schedule` | Schedule a clip for future upload |
+| `POST` | `/api/schedule/{id}/retry` | Reset failed post and retry upload immediately |
+| `POST` | `/api/schedule/retry-all` | Retry all failed uploads |
+| `DELETE`| `/api/schedule/failed` | Clear all failed records from queue |
+| `POST` | `/api/accounts/{platform}/connect`| Open browser window for manual login |
+| `GET` | `/api/settings/models` | Check readiness of the 5 local AI models |
+| `GET` | `/api/media?path=...` | Stream local video or storyboard image to the frontend |
+| `WS` | `/ws` | WebSocket channel streaming live progress and logs |
 
 ---
 
-## 📁 Backend Directory Layout
+## 🚀 Quick Local Setup with uv
 
-```text
-backend/
-├── main.py               # FastAPI application entry point, SPA static hosting & media streamer
-├── config.py             # System paths, server ports, and model configurations
-├── database.py           # SQLite schema, async connection pool, and migrations
-├── models/               # Pydantic schemas (Job, Clip, Schedule, Account)
-│   ├── __init__.py
-│   ├── job.py
-│   └── schedule.py
-├── pipeline/             # Core local AI processing pipeline
-│   ├── orchestrator.py   # Multi-stage automated pipeline coordinator
-│   ├── transcriber.py    # Speech-to-text engine (faster-whisper + Silero VAD)
-│   ├── analyzer.py       # Highlight ranker & viral scoring algorithms
-│   ├── multimodal_analyzer.py # Optical flow motion, RMS energy & storyboards
-│   ├── hook_generator.py # Spoken & visual attention hook generator (Llama 3.2)
-│   ├── tts.py            # Kokoro-82M ONNX Text-to-Speech engine
-│   ├── voice_cloner.py   # OpenVoice v2 tone converter
-│   ├── smart_crop.py     # YOLOv8n-Face tracking & 9:16 layout logic
-│   └── assembler.py      # FFmpeg 9 video slicer, master ducking & overlays
-├── routers/              # REST & WebSocket API endpoints
-│   ├── jobs.py           # Video upload, intake jobs, & telemetry
-│   ├── clips.py          # Clip fine-tuning, re-rendering & voice synthesis
-│   ├── schedule.py       # Calendar queue, retry logic, & instant publish
-│   ├── accounts.py       # Interactive stealth browser login & session checks
-│   ├── settings.py       # Model readiness checks & voice reference studio
-│   └── ws.py             # Real-time WebSocket telemetry gateway
-├── scheduler/            # Background broadcast scheduler
-│   └── worker.py         # Cron loop polling due posts and dispatching uploads
-├── uploaders/            # Social platform automation adapters
-│   ├── base.py           # Abstract base uploader interface
-│   ├── stealth.py        # Anti-detection stealth scripts & browser installer
-│   ├── youtube.py        # YouTube Studio Shorts uploader
-│   ├── instagram.py      # Instagram Reels uploader
-│   └── twitter.py        # X (Twitter) video uploader
-├── pyproject.toml        # Python package dependencies managed by uv
-└── uv.lock               # Deterministic dependency lockfile
-```
-
----
-
-## 🚀 Local Development & Setup
-
-### 1. Install Dependencies
 ```bash
 cd backend
-uv sync
-```
 
-### 2. Run the Daemon
-```bash
+# 1. Install dependencies in a clean virtual environment
+uv sync
+
+# 2. Run the server
 uv run python main.py
 ```
-- **Studio Web Interface**: [http://127.0.0.1:8741](http://127.0.0.1:8741)
-- **Interactive OpenAPI Docs**: [http://127.0.0.1:8741/docs](http://127.0.0.1:8741/docs)
+
+- **Web Interface**: [http://127.0.0.1:8741](http://127.0.0.1:8741)
+- **Interactive API Documentation (Swagger)**: [http://127.0.0.1:8741/docs](http://127.0.0.1:8741/docs)
 
 ---
 
-## ❓ Troubleshooting & Diagnostics
+## ❓ Troubleshooting & Common Fixes
 
-- **Playwright Missing Browser**: If Playwright reports a missing browser, run `.venv/bin/playwright install chromium` or rely on Alfred's automatic self-healing check.
-- **Address Already in Use**: If port 8741 is busy, terminate the previous daemon with `fuser -k 8741/tcp`.
-- **FFmpeg Text Escaping**: FFmpeg 9 enforces strict escaping on `drawtext` filters. Alfred automatically sanitizes special characters.
+- **Browser Missing**: If Playwright says Chromium is missing, run `.venv/bin/playwright install chromium`. Alfred will also attempt to auto-install it automatically.
+- **Port 8741 in Use**: If another server process is running, stop it with `fuser -k 8741/tcp`.
+- **FFmpeg 9 Drawtext Errors**: Alfred automatically cleans up `%`, quotes, colons, and backslashes before running FFmpeg filtergraphs so text overlays render cleanly.

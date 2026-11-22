@@ -1,411 +1,216 @@
-# 🎩 Alfred — Offline-First AI Content Repurposing & Distribution Engine
+# 🎩 Alfred
 
-> Transform 60-minute long-form horizontal videos (keynotes, podcasts, technical talks, educational lectures) into high-retention, broadcast-ready 9:16 vertical shorts — 100% locally, with zero cloud API fees, zero telemetry, and complete data privacy.
+> **Turn long-form videos into viral vertical shorts — 100% on your own computer.**  
+> Zero cloud fees. Zero API keys. Zero monthly subscriptions. Your footage never leaves your machine.
 
 ---
 
 ## 📑 Table of Contents
 
-- [Overview](#overview)
-- [System Architecture](#system-architecture)
-  - [High-Level Architecture Diagram](#high-level-architecture-diagram)
-  - [Backend Daemon & Pipeline Flow](#backend-daemon-pipeline-flow)
-  - [Frontend Studio Architecture](#frontend-studio-architecture)
-- [Local AI Model Fleet](#local-ai-model-fleet)
-- [End-to-End Processing Pipeline](#end-to-end-processing-pipeline)
-  - [Processing Workflow Sequence](#processing-workflow-sequence)
-  - [Stage 1: High-Fidelity Audio Demuxing](#stage-1-high-fidelity-audio-demuxing)
-  - [Stage 2: Speech-to-Text with Silero VAD](#stage-2-speech-to-text-with-silero-vad)
-  - [Stage 3: Multimodal Hook & Viral Retention Analysis](#stage-3-multimodal-hook-viral-retention-analysis)
-  - [Stage 4: Attention Hook & Headline Generation](#stage-4-attention-hook-headline-generation)
-  - [Stage 5: Kokoro-82M TTS & Cloned Narration Studio](#stage-5-kokoro-82m-tts-cloned-narration-studio)
-  - [Stage 6: Multi-Framing Layout & Precision FFmpeg Assembly](#stage-6-multi-framing-layout-precision-ffmpeg-assembly)
-- [Hardware-Style NLE Multi-Track Sequencer & Live Deck](#hardware-style-nle-multi-track-sequencer-live-deck)
-  - [Multi-Track Sequencer Architecture](#multi-track-sequencer-architecture)
-  - [Precision Micro-Stepping & Whole-Video Scrubbing](#precision-micro-stepping-whole-video-scrubbing)
-  - [In-Browser Synchronized Audio Ducking Preview](#in-browser-synchronized-audio-ducking-preview)
-- [Audio Master Routing & Dialogue Isolation](#audio-master-routing-dialogue-isolation)
-- [Presentation-Aware 9:16 Framing Engine](#presentation-aware-916-framing-engine)
-- [Distribution Engine: Instant Publish & Smart Calendar](#distribution-engine-instant-publish-smart-calendar)
-  - [Instant "Publish Now" vs "Schedule for Later"](#instant-publish-now-vs-schedule-for-later)
-  - [Distribution State Machine & Retry Lifecycle](#distribution-state-machine-retry-lifecycle)
-  - [Queue Management & Failure Recovery](#queue-management-failure-recovery)
-  - [Anti-Detection Stealth Playwright Automation](#anti-detection-stealth-playwright-automation)
-  - [Self-Healing Browser Setup & Linux Wayland Support](#self-healing-browser-setup-linux-wayland-support)
-- [Hardware Requirements & Performance Profiling](#hardware-requirements-performance-profiling)
-- [Comprehensive Technologies Stack](#comprehensive-technologies-stack)
-- [Repository Directory Structure](#repository-directory-structure)
-- [Database Architecture & Persistence](#database-architecture-persistence)
-  - [Entity-Relationship Diagram](#entity-relationship-diagram)
-  - [SQL Schema Definition](#sql-schema-definition)
-- [Complete REST & WebSocket API Surface](#complete-rest-websocket-api-surface)
-- [Installation & Quickstart Guide](#installation-quickstart-guide)
-  - [1. Prerequisites](#1-prerequisites)
-  - [2. Clone Repository](#2-clone-repository)
-  - [3. Backend Setup (Python + uv)](#3-backend-setup-python-uv)
-  - [4. Frontend Setup (React + Vite)](#4-frontend-setup-react-vite)
-  - [5. Desktop Shell Setup (Tauri v2)](#5-desktop-shell-setup-tauri-v2)
-- [Configuration & Environment Variables](#configuration-environment-variables)
-- [Troubleshooting & FAQs](#troubleshooting-faqs)
+- [What is Alfred?](#what-is-alfred)
+- [How It Works in 6 Simple Steps](#how-it-works-in-6-simple-steps)
+- [System Architecture (How the pieces connect)](#system-architecture-how-the-pieces-connect)
+- [The 5 Local AI Models (Your On-Device Brain)](#the-5-local-ai-models-your-on-device-brain)
+- [Key Features Explained Simply](#key-features-explained-simply)
+  - [1. Presentation-Friendly 9:16 Video (No cut-off slides!)](#1-presentation-friendly-916-video-no-cut-off-slides)
+  - [2. Multi-Track Timeline Editor (Like real editing software)](#2-multi-track-timeline-editor-like-real-editing-software)
+  - [3. Clean Audio Routing (No voices talking over each other)](#3-clean-audio-routing-no-voices-talking-over-each-other)
+  - [4. Clone Your Own Voice in 15 Seconds](#4-clone-your-own-voice-in-15-seconds)
+  - [5. One-Click Publishing & Smart Calendar](#5-one-click-publishing-smart-calendar)
+- [Hardware Requirements (Can my laptop run this?)](#hardware-requirements-can-my-laptop-run-this)
+- [Quickstart Guide (Get running in 3 minutes)](#quickstart-guide-get-running-in-3-minutes)
+- [Project Directory Tour](#project-directory-tour)
+- [Simple API Reference](#simple-api-reference)
+- [Frequently Asked Questions & Fixes](#frequently-asked-questions-fixes)
 - [License](#license)
 
 ---
 
-## 💡 Overview
+## 💡 What is Alfred?
 
-Producing vertical short-form video content (YouTube Shorts, Instagram Reels, TikTok, LinkedIn, X) from long-form technical lectures, keynotes, webinars, and podcasts is historically labor-intensive. Editors must manually scrub through hours of footage, hunt for engaging hooks, crop 16:9 widescreen footage into 9:16 vertical without cutting off slides or speaker faces, burn in subtitles, record voiceovers, and handle platform uploads.
+If you have a 1-hour podcast, conference keynote, coding tutorial, or university lecture, turning it into 60-second vertical shorts for **YouTube Shorts, Instagram Reels, and TikTok** takes hours of tedious manual work:
 
-**Alfred** automates this entire pipeline locally on your machine:
-- **100% Offline & Private**: Powered by local ONNX models, local Whisper transcription, local GGUF LLMs, and local FFmpeg rendering. Your source video never leaves your workstation. Zero cloud API keys or monthly subscription fees.
-- **Presentation-Aware Multi-Framing**: Solves the common vertical crop problem where technical slides, code editors, and presentation text get sliced off.
-- **Zero Audio Collisions**: Clean separation between natural speaker dialogue and synthesized hook voiceovers.
-- **Studio Editorial Deck**: Features a pro NLE multi-track sequencer with frame-accurate micro-stepping (`±1f`, `±1s`, `±5s`), whole-video timeline scrubbing, and live ducked audio preview.
-- **Automated Social Distribution**: Upload immediately or schedule across platforms via stealth browser automation with persistent session authentication.
+1. You have to re-watch the whole video to find the best 30–60 second moments.
+2. You have to crop horizontal 16:9 video into vertical 9:16. Most automatic tools blindly crop the center, which **cuts off 60% of your presentation slides, code editors, and charts**.
+3. You have to write punchy title hooks, record voiceovers, and burn in subtitles.
+4. You have to manually log into social media and upload each file.
+
+**Alfred solves this automatically on your local machine:**
+- **Finds the best moments** by analyzing where the speaker gets energetic, where people laugh or applaud, and where visual movement happens.
+- **Protects your slides and code** by fitting the full presentation in the vertical frame with a clean blurred background, or splitting the screen between the speaker and the slides.
+- **Writes & speaks viral opening hooks** using small local AI models so you grab the viewer's attention before they scroll away.
+- **Gives you a real editor** with micro-frame nudges, draggable voiceover blocks, and live volume-ducked preview.
+- **Publishes with 1 click** using your existing logged-in browser session—no expensive developer APIs or tokens needed.
 
 ---
 
-## 🏛️ System Architecture
+## 🔄 How It Works in 6 Simple Steps
 
-Alfred combines a reactive **React 19 + TypeScript** frontend with an asynchronous **FastAPI + Python 3.10+** daemon, orchestrated by an embedded **SQLite (WAL mode)** database and a local media assembly engine.
-
-### High-Level Architecture Diagram
+Here is the entire process from raw video to published vertical short:
 
 ```mermaid
 flowchart TD
-    classDef client fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
-    classDef server fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef step fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
     classDef ai fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
-    classDef media fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
-    classDef storage fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
-    classDef social fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
+    classDef editor fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+    classDef publish fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
 
-    subgraph Client ["Frontend & Desktop Client (Tauri v2 + React 19)"]
-        UI["Studio Atelier Console\n(Zustand + React Router)"]:::client
-        WSClient["WebSocket Telemetry Client"]:::client
-        Sequencer["NLE Multi-Track Sequencer Deck\n(V1 Video + A1 Audio Track)"]:::client
-        Player["Dual 16:9 / 9:16 Synchronized Viewport"]:::client
-        Recorder["In-Browser Voice Reference Studio"]:::client
+    Video["📹 Drop in your 16:9 Video\n(Podcast, talk, or tutorial)"]:::step --> S1
+
+    subgraph Pipeline ["Step 1 to 6: Automatic Local Processing"]
+        S1["1. Extract Audio\n(Quick 16kHz audio track)"]:::step
+        S2["2. Transcribe Words\n(Whisper listens and writes down every word)"]:::ai
+        S3["3. Find Best Highlights\n(Detects laughter, applause, camera motion)"]:::ai
+        S4["4. Write Hook & Title\n(Llama 3.2 writes a 3-second hook)"]:::ai
+        S5["5. Speak the Hook\n(Kokoro creates voiceover or clones your voice)"]:::ai
+        S6["6. Render 9:16 Shorts\n(Crops to vertical without cutting off slides)"]:::step
+        S1 --> S2 --> S3 --> S4 --> S5 --> S6
     end
 
-    subgraph Server ["Backend Daemon (FastAPI + Asyncio :8741)"]
-        API["REST & WebSocket Gateway"]:::server
-        DB[("SQLite Embedded DB\nWAL Mode")]:::storage
-        Scheduler["Background Dispatch Worker\n(30s Heartbeat Loop)"]:::server
-    end
+    S6 --> Review["🎛️ You Review & Fine-Tune\n(Trim clip boundaries, move voiceover, test live audio)"]:::editor
 
-    subgraph Pipeline ["Local AI & Video Processing Pipeline"]
-        Demux["Audio Demuxer (16kHz Mono WAV)"]:::media
-        Whisper["Transcriber (faster-whisper + Silero VAD)"]:::ai
-        Analyzer["Multimodal Analyzer\n(Optical Flow + Audio RMS Spikes)"]:::ai
-        Llama["Llama 3.2 1B Instruct GGUF\n(Viral Hook & Headline Writer)"]:::ai
-        TTS["Kokoro-82M ONNX + OpenVoice v2"]:::ai
-        SmartCrop["Layout Engine (Presentation Fit / Split / Face Focus)"]:::media
-        Assembler["FFmpeg 9 Precision Assembler\n(Filters, Master Ducking, Safe Badges)"]:::media
-    end
+    Review --> Choice{"How do you want to publish?"}
 
-    subgraph Distribution ["Stealth Browser Distribution Engine"]
-        Playwright["Stealth Playwright Automation\n(Self-Healing Chromium Shell)"]:::social
-        Sessions["Persistent Cookie Profiles\n(~/.alfred/chromium_profiles)"]:::storage
-        Uploader["Platform Uploaders (YouTube Shorts, IG Reels, X)"]:::social
-    end
-
-    UI -->|Job Ingestion & Control| API
-    API -->|Real-time Events| WSClient
-    API --> DB
-    API --> Pipeline
-    Pipeline --> DB
-    Scheduler -->|Pending Broadcasts| DB
-    Scheduler --> Distribution
-    Distribution -->|Status & Errors| DB
+    Choice -->|⚡ Right Now| PubNow["🚀 Publish Immediately\n(Uploads in background via browser)"]:::publish
+    Choice -->|📅 Later On| PubLater["📅 Put on Calendar\n(Scheduler uploads at your chosen date/time)"]:::publish
 ```
 
 ---
 
-### Backend Daemon & Pipeline Flow
+## 🏛️ System Architecture (How the pieces connect)
 
-The backend daemon coordinates pipeline execution asynchronously without blocking the web event loop:
-
-```mermaid
-flowchart TD
-    classDef gateway fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
-    classDef worker fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
-    classDef ai fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
-    classDef media fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
-    classDef db fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
-    classDef social fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
-
-    subgraph Inbound ["Inbound Gateway (:8741)"]
-        HTTP["FastAPI REST API\n(/api/jobs, /api/clips, /api/schedule, /api/accounts)"]:::gateway
-        WS["WebSocket Telemetry Gateway\n(ws://127.0.0.1:8741/ws)"]:::gateway
-    end
-
-    subgraph Workers ["Asynchronous Background Workers"]
-        Orchestrator["Pipeline Orchestrator\n(6-Stage Automated AI Extraction)"]:::worker
-        ReRenderer["Fast Re-Render Engine\n(Targeted FFmpeg seek slices in ~15s)"]:::worker
-        Dispatcher["Scheduler Heartbeat Worker\n(Evaluates due queue every 30-60s)"]:::worker
-    end
-
-    subgraph PipelineStages ["6-Stage Local AI Processing Engine"]
-        S1["Stage 1: FFmpeg Audio Demux (16kHz Mono WAV)"]:::media
-        S2["Stage 2: faster-whisper Speech-to-Text + Silero VAD"]:::ai
-        S3["Stage 3: Multimodal Optical Flow & Audio RMS Spike Analyzer"]:::ai
-        S4["Stage 4: Llama 3.2 1B Instruct Viral Hook & Badge Writer"]:::ai
-        S5["Stage 5: Kokoro-82M ONNX Synthesis + OpenVoice v2 Cloner"]:::ai
-        S6["Stage 6: FFmpeg 9 Filtergraph Assembler & Master Ducking"]:::media
-    end
-
-    subgraph Storage ["SQLite Persistence (WAL Mode)"]
-        T_Jobs[("jobs & transcripts")]:::db
-        T_Clips[("clips (scores, timecodes, modes, storyboards)")]:::db
-        T_Schedule[("scheduled_posts (ISO 8601 UTC, status, attempts)")]:::db
-        T_Accounts[("social_accounts (persistent Chromium profiles)")]:::db
-    end
-
-    subgraph DistributionEngine ["Stealth Browser Distribution Engine"]
-        Playwright["Stealth Playwright Chromium Context\n(Anti-bot evasion, humanized cadence)"]:::social
-        YouTube["YouTube Studio Shorts"]:::social
-        Instagram["Instagram Reels"]:::social
-        Twitter["X / Twitter Video"]:::social
-    end
-
-    HTTP -->|1. Submit Video File| Orchestrator
-    HTTP -->|2. Fine-Tune In/Out or Audio| ReRenderer
-    HTTP -->|3. Schedule or Publish Now| T_Schedule
-
-    Orchestrator --> S1 --> S2 --> S3 --> S4 --> S5 --> S6
-    S6 -->|Persist Candidate Clips| T_Clips
-    ReRenderer -->|Re-mux Single Clip| S6
-
-    Orchestrator -.->|Stream Stage & Progress 0-100%| WS
-    Dispatcher -->|Query due scheduled_at <= now| T_Schedule
-    Dispatcher -->|Trigger Upload Task| Playwright
-    Playwright --> YouTube
-    Playwright --> Instagram
-    Playwright --> Twitter
-```
-
-1. **Intake & Validation**: Receives video uploads or local file paths via `POST /api/jobs/upload`. Validates codecs, aspect ratios, and durations via `ffprobe`. Creates a job record in SQLite with status `queued`.
-2. **Background Orchestration**: Dispatches an `asyncio.create_task()` running `pipeline/orchestrator.py`. The orchestrator locks project files under `~/Alfred/projects/{video_title}/`.
-3. **Stage Execution & Event Streaming**: Progress events are published over WebSockets (`ws://127.0.0.1:8741/ws`) with stage names (`transcribing`, `analyzing`, `rendering`), 0–100 progress percentages, and log messages.
-4. **Parameterized Non-Destructive Re-rendering**: When the creator tweaks start/end timecodes, audio modes, or hook placement in the review console, `POST /api/clips/{id}/rerender` re-executes only the assembly stage (~10–20 seconds) using targeted FFmpeg seek filters (`-ss`, `-to`).
-5. **Background Distribution Worker**: `scheduler/worker.py` evaluates the `scheduled_posts` table every 30–60 seconds, launching stealth Playwright browser contexts for due posts.
-
----
-
-### Frontend Studio Architecture
-
-The frontend is built with React 19, TypeScript, and Tailwind CSS, featuring an architectural layout inspired by Studio Atelier design principles:
+Alfred is split into three simple parts:
+1. **The Desktop & Web App**: Built with React 19, running fast in your browser or desktop window.
+2. **The Local Server**: A lightweight Python service running on your machine at `http://127.0.0.1:8741`.
+3. **The Local AI Engines & Browser**: Whisper, Llama, Kokoro, and Playwright doing the heavy lifting completely offline.
 
 ```mermaid
 flowchart LR
-    classDef page fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
-    classDef state fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
-    classDef deck fill:#18181b,stroke:#f59e0b,stroke-width:1.5px,color:#fef3c7;
-    classDef audio fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+    classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef server fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef ai fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
+    classDef db fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+    classDef social fill:#4c0519,stroke:#fb7185,stroke-width:1.5px,color:#ffe4e6;
 
-    subgraph Pages ["Studio Atelier Pages (React 19)"]
-        ProcessPage["ProcessPage\n(Video Drag & Drop, Live WS Telemetry)"]:::page
-        ReviewPage["ReviewPage\n(Dual Viewport & NLE Editorial Console)"]:::page
-        CalendarPage["CalendarPage\n(Broadcast Queue, Live Status & Retry Deck)"]:::page
-        SettingsPage["SettingsPage\n(Model Readiness, Accounts, Voice Recorder)"]:::page
+    subgraph ClientApp ["Your Screen (React 19 Frontend)"]
+        UI_Process["Drop Video File"]:::frontend
+        UI_Review["Timeline Editor & Live Preview"]:::frontend
+        UI_Calendar["Schedule & Queue Manager"]:::frontend
     end
 
-    subgraph StateAndNet ["State Management & API Layer"]
-        WSContext["WebSocketContext\n(Auto-reconnect & real-time telemetry)"]:::state
-        ApiClient["Typed REST API Client\n(lib/api.ts)"]:::state
-        AudioMixer["In-Browser Audio Ducking Mixer\n(Dynamic volume attenuation to 15%)"]:::audio
+    subgraph BackendDaemon ["Local Python Engine (:8741)"]
+        API["FastAPI REST & WebSocket Hub"]:::server
+        Worker["Job Runner & Scheduler"]:::server
+        DB[("Local SQLite Database\n(Saves your clips & schedule)")]:::db
     end
 
-    subgraph ModularDeck ["Modular NLE Studio Components"]
-        TimelineEditor["ClipTimelineEditor\n(Timecode ruler, V1 Video & A1 Audio tracks)"]:::deck
-        JogDeck["Hardware-Style Jog Deck\n(±1f = 0.033s, ±1s, ±5s micro-nudges)"]:::deck
-        DualPlayer["Synchronized Dual Viewport\n(16:9 Master vs 9:16 Smartphone Cutdown)"]:::deck
-        VoiceStudio["In-Browser Mic Voice Studio\n(MediaRecorder -> 24kHz Reference WAV)"]:::audio
+    subgraph LocalAI ["On-Device AI Models"]
+        Whisper["Whisper (Speech-to-Text)"]:::ai
+        Llama["Llama 3.2 (Hook Writer)"]:::ai
+        Kokoro["Kokoro (Voice Generator)"]:::ai
+        FFmpeg["FFmpeg (Video Slicer & Cropper)"]:::server
     end
 
-    ProcessPage <--> ApiClient
-    ProcessPage <--> WSContext
-    ReviewPage --> DualPlayer
-    ReviewPage --> TimelineEditor
-    TimelineEditor --> JogDeck
-    TimelineEditor --> AudioMixer
-    CalendarPage <--> ApiClient
-    SettingsPage --> VoiceStudio
-    SettingsPage <--> ApiClient
+    subgraph BrowserEngine ["Safe Social Uploader"]
+        Playwright["Local Browser (Playwright)\nUses your saved login cookies"]:::social
+        YouTube["YouTube Shorts"]:::social
+        Instagram["Instagram Reels"]:::social
+        Twitter["X / Twitter"]:::social
+    end
+
+    ClientApp <--> API
+    API <--> DB
+    API --> Worker
+    Worker --> LocalAI
+    Worker --> BrowserEngine
+    BrowserEngine --> YouTube
+    BrowserEngine --> Instagram
+    BrowserEngine --> Twitter
 ```
 
 ---
 
-## 🧠 Local AI Model Fleet
+## 🧠 The 5 Local AI Models (Your On-Device Brain)
 
-Alfred runs completely on-device. All 5 local AI models are managed and verified in `models/` and cached HuggingFace storage:
+Alfred doesn't send your video to OpenAI, Google, or any cloud API. Everything runs directly on your CPU or graphics card using 5 specialized local models:
 
-| Model | Architecture | Size | Role | Runtime | Hardware Acceleration |
-|---|---|---|---|---|---|
-| **Whisper Base.en / Small.en** | CTranslate2 INT8 | ~140 MB / ~460 MB | Studio speech transcription with word-level timestamps & Silero VAD | `faster-whisper` | CPU AVX2/AVX-512 & CUDA |
-| **Llama 3.2 1B Instruct** | Q4_K_M GGUF | 771 MB | Viral highlight identification & contextual hook script generation | `llama-cpp-python` | Metal / CUDA / CPU BLAS |
-| **Kokoro-82M** | StyleTTS2 ONNX | 311 MB | Ultra-fast text-to-speech narration (24kHz Mono) | `onnxruntime` | CPU & CUDA Execution Providers |
-| **YOLOv8n-Face** | Dynamic 640×640 ONNX | 12.1 MB | Kinetic 9:16 smart cropping & face tracking | `onnxruntime` | Multithreaded frame inference |
-| **OpenVoice v2** | PyTorch Checkpoint | 126 MB | Reference speaker tone converter & voice cloning | PyTorch / NumPy | CPU & CUDA |
+| Model Name | What it does in plain English | Size on Disk | How it helps your short |
+|---|---|---|---|
+| **Whisper (Base / Small)** | Listens to the video audio and writes down every word with exact timestamps. Uses voice-filtering so background music doesn't confuse it. | ~140 – 460 MB | Ensures clips start and end on complete sentences, never mid-word. |
+| **Llama 3.2 (1B Instruct)** | Reads the spoken words and writes a 1–2 sentence verbal hook and a 3-to-7 word visual headline badge. | 771 MB | Grabs attention in the first 3 seconds so viewers don't scroll past. |
+| **Kokoro-82M** | An ultra-fast local voice synthesizer that reads the hook out loud in 0.5 seconds. | 311 MB | Adds a professional studio voiceover without needing you to record audio manually. |
+| **YOLOv8n-Face** | Looks at video frames and tracks where the speaker's face is moving in real-time. | 12 MB | Keeps the speaker's face centered when using talking-head vertical crop. |
+| **OpenVoice v2** | An audio tone matcher that learns your vocal pitch from a 10-second reference sample. | 126 MB | Makes the AI voiceover sound like you instead of a robot. |
 
-> Model readiness can be verified at any time via `GET /api/settings/models`.
+> 💡 **Check status anytime**: In Alfred, go to **Settings → AI Models** to verify that all 5 models are ready.
 
 ---
 
-## 🔄 End-to-End Processing Pipeline
+## ✨ Key Features Explained Simply
 
-### Processing Workflow Sequence
+### 1. Presentation-Friendly 9:16 Video (No cut-off slides!)
+
+Standard vertical tools crop the center of widescreen videos. If you are showing slides, code, or charts, 60% of the screen gets cut off. Alfred gives you 3 smart layout modes:
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor Creator as Content Creator
-    participant Ingest as Ingest Bay (/process)
-    participant Server as FastAPI Server (:8741)
-    participant Engine as AI Pipeline Engine
-    participant Deck as Editorial Console (/review)
-    participant Dist as Distribution Engine
+flowchart LR
+    classDef input fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
+    classDef fit fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
+    classDef split fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
+    classDef crop fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
 
-    Creator->>Ingest: Upload 16:9 Master Video (MP4 / MOV / MKV)
-    Ingest->>Server: POST /api/jobs/upload
-    Server-->>Ingest: Job created (ID) + WebSocket connection
-    
-    rect rgb(20, 26, 38)
-        note over Server,Engine: 6-Stage Automated AI Extraction Pipeline
-        Server->>Engine: Stage 1: Demux 16kHz Mono Audio (FFmpeg direct stream)
-        Server->>Engine: Stage 2: Transcribe speech with word-level timestamps (faster-whisper + Silero VAD)
-        Server->>Engine: Stage 3: Multimodal optical flow + audio RMS spike analysis
-        Server->>Engine: Stage 4: Generate spoken hooks & visual headline badges (Llama 3.2 1B)
-        Server->>Engine: Stage 5: Synthesize narration voice / cloned timbre (Kokoro-82M ONNX)
-        Server->>Engine: Stage 6: Render initial 9:16 cutdowns (FFmpeg 9 Filtergraph)
-    end
+    Input["16:9 Master Video\n(Presenter + Slides / Code)"]:::input --> Mode1
+    Input --> Mode2
+    Input --> Mode3
 
-    Engine-->>Server: 5 candidate clips saved to SQLite
-    Server-->>Ingest: WS Event: job_completed
-    Ingest-->>Creator: Transition to Editorial Review Console (/review)
-
-    rect rgb(28, 24, 20)
-        note over Creator,Deck: Non-Destructive Editorial Fine-Tuning
-        Creator->>Deck: Fine-tune In/Out points using NLE Sequencer & ±1f micro-nudges
-        Creator->>Deck: Select Audio Routing (Original / Intro Hook / Custom Voiceover)
-        Creator->>Deck: Adjust Voiceover placement slider on timeline
-        Creator->>Deck: Click "Apply & Re-render Clip"
-        Deck->>Server: POST /api/clips/{id}/rerender
-        Server-->>Deck: Re-rendered clip ready in ~15 seconds
-    end
-
-    rect rgb(28, 18, 24)
-        note over Creator,Dist: Multi-Platform Broadcast Dispatch
-        alt Instant Upload
-            Creator->>Deck: Click "Publish Now"
-            Deck->>Server: POST /api/schedule/publish-now
-            Server->>Dist: Trigger immediate background upload via stealth browser
-        else Scheduled Post
-            Creator->>Deck: Click "Schedule Post"
-            Deck->>Server: POST /api/schedule
-            Server-->>Deck: Added to Broadcast Calendar (/calendar)
-        end
-    end
+    Mode1["1. Canvas Fit (Recommended)\nFull 16:9 slide centered in vertical frame.\nDark blurred video fills top and bottom.\n0% of your slides or code are cut off!"]:::fit
+    Mode2["2. Stacked Split\nSpeaker's talking head on top (40%).\nPresentation slide on the bottom (60%)."]:::split
+    Mode3["3. Face Focus\nSmart auto-crop that tracks the speaker's face.\nIdeal for podcasts and interviews."]:::crop
 ```
-
-### Stage 1: High-Fidelity Audio Demuxing
-- Uses direct FFmpeg stream extraction to demux the master audio track into a pristine 16kHz mono WAV file:
-  ```bash
-  ffmpeg -y -i input.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
-  ```
-- Operates at negligible CPU overhead (~0.8s for a 10-minute video).
-
-### Stage 2: Speech-to-Text with Silero VAD
-- **`faster-whisper` (Base.en / Small.en)**: Uses CTranslate2 INT8 quantization for fast, accurate speech recognition.
-- **5-Path Beam Search**: Accurately recognizes technical terminology, proper nouns, and fast speakers.
-- **Silero Voice Activity Detection (VAD)**: Strictly gates transcription to human speech segments, completely preventing music and background silence hallucinations.
-- Generates granular word-level timestamps essential for precise clip boundary snapping.
-
-### Stage 3: Multimodal Hook & Viral Retention Analysis
-Alfred does not rely solely on text keywords. The multimodal analyzer (`pipeline/multimodal_analyzer.py`) combines visual, acoustic, and linguistic cues:
-1. **Optical Flow Motion Energy**: Samples frames at 2 fps using OpenCV Farneback dense optical flow to detect visual movement and scene transitions.
-2. **Dynamic Audio RMS Spikes**: Analyzes root-mean-square audio energy contrast to catch high-arousal acoustic events (laughter, audience applause, enthusiastic vocal swells, dramatic pauses).
-3. **Scene-Cut Boundary Anchoring**: Detects camera shot transitions to anchor clip start points naturally.
-4. **4-Frame Visual Hook Storyboards**: Automatically captures storyboard frames at `+0.0s`, `+1.0s`, `+2.0s`, and `+3.0s` to verify the opening visual energy.
-5. **Calibrated Viral Retention Scores (0–100%)**: Computes a non-linear percentile index where top highlight moments achieve 88%–96% predicted retention, accompanied by clear human-readable narrative rationales.
-
-### Stage 4: Attention Hook & Headline Generation
-- **Local Llama 3.2 1B Instruct**: Generates high-converting hook scripts tailored to the clip's transcript:
-  - **Spoken Hook**: A natural 1–2 sentence verbal intro designed to tease the core insight.
-  - **Visual Headline**: A punchy 3–7 word uppercase headline badge placed in the upper 22% safe-zone.
-- Robust heuristic fallback ensures hook generation succeeds even without local LLM weights.
-
-### Stage 5: Kokoro-82M TTS & Cloned Narration Studio
-- **Kokoro-82M ONNX**: 82-million parameter local TTS model with natural phrasing and human prosody at 24kHz.
-- **Voice Presets**: High-fidelity voices including `Heart` (warm & engaging), `Bella` (clear & upbeat), `Nicole` (relaxed), `Adam` (confident), and `Michael` (deep & grounded).
-- **In-Browser Reference Voice Recorder**: Record 10–15s reference samples with your microphone directly from Settings.
-- **OpenVoice v2 Tone Conversion**: Extracts speaker acoustic embeddings and transfers personal timbre to generated hooks offline.
-
-### Stage 6: Multi-Framing Layout & Precision FFmpeg Assembly
-- Assembles final vertical reels (1080×1920) using FFmpeg 9 filtergraphs:
-  - Scales and centers 16:9 footage with dark blurred background fill (`presentation_fit`), stacked dual viewports (`split_screen`), or face-tracked crop (`face_focus`).
-  - Burns high-contrast visual headline badge into the upper safe zone.
-  - Mixes audio according to the active audio routing mode with smooth volume curves.
 
 ---
 
-## 🎛️ Hardware-Style NLE Multi-Track Sequencer & Live Deck
+### 2. Multi-Track Timeline Editor (Like real editing software)
 
-The Editorial Review Console (`frontend/src/components/ClipTimelineEditor.tsx`) gives creators professional NLE capabilities inside the browser:
-
-### Multi-Track Sequencer Architecture
+When you review a clip, you don't just get a simple slider. You get a professional multi-track console:
 
 ```mermaid
 flowchart LR
     classDef track fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
-    classDef control fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
+    classDef action fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
     classDef monitor fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
 
-    subgraph TimelineDeck ["Multi-Track NLE Sequencer Deck"]
-        Ruler["Dynamic Timecode Ruler\n(Scaled MM:SS markers across clip range)"]:::track
-        TrackV1["Track V1: Video Sequence Layer\n[Visual Storyboard Thumbnails + Active Slice Region]"]:::track
-        TrackA1["Track A1: Audio Hook Layer\n[Interactive Draggable Spoken Hook Block]"]:::track
+    subgraph Sequencer ["Multi-Track Timeline View"]
+        T_Ruler["Timecode Ruler: 00:00 ─────── 00:30 ─────── 01:00"]:::track
+        T_V1["Track V1 (Video): [Storyboard Thumbnails + Active Clip Region]"]:::track
+        T_A1["Track A1 (Audio): [🔊 Draggable Spoken Hook Block]"]:::track
     end
 
-    subgraph Controls ["Hardware Tactile Creator Controls"]
-        Scrub["Continuous Video Scrubber\n(Scrub across entire long-form video)"]:::control
-        MicroNudge["Micro-Nudge Precision Buttons\n(±1f = 0.033s | ±1s | ±5s)"]:::control
-        Snapping["Mark In / Mark Out\n(Snap Start/End to current playhead frame)"]:::control
-        ConstrainedDrag["Audio Hook Constraint Engine\n(0 <= offset <= clip_duration - hook_duration)"]:::control
+    subgraph Controls ["Tactile Controls"]
+        Nudge["Micro-Nudge Buttons:\n[-5s] [-1s] [-1f]  and  [+1f] [+1s] [+5s]"]:::action
+        Snap["Frame Snapping:\n[🚩 Set Start Here] and [🏁 Set End Here]"]:::action
+        Scrub["Full-Length Scrubber:\nScrub anywhere across the whole source video"]:::action
     end
 
-    subgraph MonitorEngine ["In-Browser Live Verification"]
-        DualMonitor["Dual 16:9 / 9:16 Synchronized Monitor"]:::monitor
-        LiveDucking["Live Audio Ducking Mixer\n(Smoothly ducks video audio to 15% during hook)"]:::monitor
-        FastRerender["One-Click Parameterized Re-Render\n(Targeted FFmpeg seek slices in ~15 seconds)"]:::monitor
+    subgraph Feedback ["Live Feedback"]
+        LiveAudio["Live Ducked Preview:\nVideo volume automatically drops to 15%\nwhile the hook voiceover speaks"]:::monitor
+        OneClick["Apply & Re-Render:\nRe-cuts and re-muxes your clip in ~15 seconds"]:::monitor
     end
 
-    Scrub --> TimelineDeck
-    MicroNudge --> TimelineDeck
-    Snapping --> TimelineDeck
-    ConstrainedDrag --> TrackA1
-    TimelineDeck --> DualMonitor
-    TimelineDeck --> LiveDucking
-    TimelineDeck --> FastRerender
+    Controls --> Sequencer
+    Sequencer --> Feedback
 ```
 
-### Precision Micro-Stepping & Whole-Video Scrubbing
-- **Frame-Accurate Micro-Stepping**:
-  - `±1f`: Single frame step at 30 fps (~0.033 seconds) for sample-accurate cuts.
-  - `±1s`: Second jump for quick pacing adjustments.
-  - `±5s`: Five-second jump for rapid traversal.
-- **Unrestricted Video Scrubber**: Scrub anywhere across the entire video duration—not limited to the current clip slice.
-- **Frame Snapping**: "Set Start Here" and "Set End Here" snap clip boundaries directly to the current playhead position.
-
-### In-Browser Synchronized Audio Ducking Preview
-- When previewing clips in the browser with `intro_hook` or `custom_voiceover`, Alfred dynamically monitors video playhead position.
-- Video audio volume is smoothly ducked (to 15%) while the spoken hook audio plays, and automatically recovered when the hook finishes.
+- **Frame-Accurate Stepping (`±1f`)**: Jump by exactly 1 single frame (0.033s at 30 fps) to cut right as someone finishes speaking.
+- **Whole-Video Scrubbing**: Don't be trapped inside the clip boundaries. Scrub anywhere from 0:00 to the end of the video, and click "Set Start Here" or "Set End Here".
+- **Constrained Voiceover Slider**: You can drag the voiceover to play at any second in the clip. Alfred guarantees it cannot drag past the end of the video.
+- **Live Sound Ducking Preview**: When previewing in the browser, the video volume automatically dips down to 15% while the voiceover speaks, and smoothly rises back up when done!
 
 ---
 
-## 🎙️ Audio Master Routing & Dialogue Isolation
+### 3. Clean Audio Routing (No voices talking over each other)
 
-Alfred eliminates awkward voice collisions between synthetic AI narration and the video's original speaker:
+Nothing sounds worse than an AI voiceover shouting over the original speaker. Alfred provides three clean audio modes:
 
 ```mermaid
 flowchart TD
@@ -413,87 +218,42 @@ flowchart TD
     classDef ducked fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
     classDef custom fill:#1c1917,stroke:#fbbf24,stroke-width:1.5px,color:#fef3c7;
 
-    subgraph Mode1 ["Mode 1: Original Dialogue (original)"]
+    subgraph Mode1 ["Mode 1: Original Dialogue Only (Default)"]
         direction LR
-        Src1["Speaker Dialogue\n(100% Volume)"]:::natural
-        Out1["Master Audio: Pure Natural Voice\n(0% synthetic voiceover, 0% ducking, 100% fidelity)"]:::natural
-        Src1 --> Out1
+        M1_In["Speaker Natural Audio (100% Volume)"]:::natural --> M1_Out["Clean Speech (Zero voiceover, zero ducking)"]:::natural
     end
 
-    subgraph Mode2 ["Mode 2: Intro Hook at Start (intro_hook)"]
+    subgraph Mode2 ["Mode 2: Intro Hook at the Start"]
         direction LR
-        Hook2["Spoken Hook Narration\n(Plays at t = 0.0s)"]:::ducked
-        Duck2["Speaker Dialogue ducked to 15%\nfor hook duration"]:::ducked
-        Rec2["Smooth Volume Recovery\nback to 100%"]:::natural
-        Hook2 --> Duck2 --> Rec2
+        M2_Hook["AI Hook speaks (t = 0.0s)"]:::ducked --> M2_Duck["Speaker volume dips to 15%"]:::ducked --> M2_Rec["Speaker smoothly recovers to 100%"]:::natural
     end
 
-    subgraph Mode3 ["Mode 3: Timeline Voiceover (custom_voiceover)"]
+    subgraph Mode3 ["Mode 3: Custom Voiceover Placement"]
         direction LR
-        Pre3["Speaker Dialogue at 100%"]:::natural
-        Offset3["User Hook Placement\n(hook_offset_sec)"]:::custom
-        Duck3["Dialogue dynamically ducked to 15%"]:::ducked
-        Post3["Smooth Volume Recovery\nback to 100%"]:::natural
-        Pre3 --> Offset3 --> Duck3 --> Post3
+        M3_Start["Speaker at 100%"]:::natural --> M3_Window["Hook plays at your slider timestamp"]:::custom --> M3_Duck["Speaker dips to 15% during hook"]:::ducked --> M3_End["Speaker recovers to 100%"]:::natural
     end
 ```
 
-| Mode | Identifier | Behavior | Ideal Use Case |
-|---|---|---|---|
-| **Original Sound Only** | `original` | 100% pure source dialogue. Zero AI voiceover, zero audio ducking, zero overlays. | Standalone speeches, funny moments, self-explanatory clips. |
-| **Intro Hook at Start** | `intro_hook` | Spoken hook plays at clip start (`t=0.0s`). Source audio ducks to 15% with smooth recovery. | Fast-paced viral shorts needing an immediate verbal grabber. |
-| **Timeline Voiceover** | `custom_voiceover` | Spoken hook placed at creator-defined timeline offset (`hook_offset_sec`) with dynamic window ducking. | Dramatic commentary or context explanation over b-roll. |
+---
+
+### 4. Clone Your Own Voice in 15 Seconds
+
+You don't need a robotic voice for your shorts:
+1. Go to **Settings → Voice Cloning Studio**.
+2. Click **Start Recording** and read the 10-second prompt into your microphone.
+3. Listen back to ensure it sounds clear, then click **Save Sample**.
+4. That's it! When Alfred writes hooks, it will synthesize them using your personal vocal tone.
 
 ---
 
-## 📐 Presentation-Aware 9:16 Framing Engine
+### 5. One-Click Publishing & Smart Calendar
 
-Traditional vertical tools center-crop 16:9 video, cutting off up to 60% of presentation slides, code editors, and diagrams. Alfred offers three intelligent framing layouts:
+You don't need to apply for complicated YouTube API keys or pay for third-party social media schedulers:
 
-```mermaid
-flowchart LR
-    classDef master fill:#0f172a,stroke:#38bdf8,stroke-width:1.5px,color:#f1f5f9;
-    classDef fit fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ecfdf5;
-    classDef split fill:#1e1b4b,stroke:#818cf8,stroke-width:1.5px,color:#e0e7ff;
-    classDef face fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#f3e8ff;
-
-    subgraph MasterInput ["Input: 16:9 Widescreen Master"]
-        Input169["Original 16:9 Video\n(Presenter + Slides / Code / Diagram)"]:::master
-    end
-
-    subgraph CanvasFit ["1. Canvas Fit (presentation_fit)"]
-        FitDesc["Full 16:9 Canvas Centered\n+ Dark Blurred Fill Padding\n(100% of slides, code, diagrams & subtitles remain visible)"]:::fit
-    end
-
-    subgraph StackedSplit ["2. Stacked Split (split_screen)"]
-        SplitTop["Top 40%: Speaker Talking Head Window"]:::split
-        SplitBottom["Bottom 60%: Slide Presentation Window"]:::split
-    end
-
-    subgraph FaceFocus ["3. Face Focus (face_focus)"]
-        CropDesc["YOLOv8n-Face Real-Time Tracking\nKinetic 9:16 Smart Crop for talking heads"]:::face
-    end
-
-    Input169 --> CanvasFit
-    Input169 --> StackedSplit
-    Input169 --> FaceFocus
-```
-
-1. **Canvas Fit (`presentation_fit`)**: Places the full 16:9 canvas in the center with a subtle dark blurred background fill. **100% of slides, code, equations, and subtitles remain visible.**
-2. **Stacked Split (`split_screen`)**: Vertically stacks the speaker's talking head on top and the presentation slide on the bottom.
-3. **Face Focus (`face_focus`)**: Tracks the speaker's face with YOLOv8n-Face ONNX to produce a centered 9:16 crop for talking-head-only segments.
-
----
-
-## 🚀 Distribution Engine: Instant Publish & Smart Calendar
-
-Alfred includes an offline-first social distribution system that bypasses official developer API restrictions, token expirations, and platform developer review processes.
-
-### Instant "Publish Now" vs "Schedule for Later"
-- **⚡ Instant "Publish Now"**: 1-click button on clip cards (`POST /api/schedule/publish-now`). Immediately queues the clip and triggers an asynchronous background upload task.
-- **📅 Schedule for Later**: The schedule modal lets you switch between immediate publication and scheduled publication with custom dates, titles, descriptions, and hashtags.
-
-### Distribution State Machine & Retry Lifecycle
+- **⚡ Instant "Publish Now"**: Click the "Publish Now" button on any approved clip. Alfred immediately starts an automated background upload to YouTube Shorts, Instagram Reels, or X.
+- **📅 Schedule for Later**: Pick a date and time. Alfred adds it to your visual calendar and automatically publishes it when the clock strikes that time.
+- **🔄 Smart Error Recovery**: If your internet drops during upload, simply click **"Retry Upload"** or **"Retry All"** on the Calendar page.
+- **Browser-Based Stealth**: Alfred uses a real Chromium browser session where you are already logged in. It moves the mouse, types like a human, and uploads directly through the web creator dashboard.
 
 ```mermaid
 stateDiagram-v2
@@ -501,555 +261,173 @@ stateDiagram-v2
     classDef active fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff
     classDef success fill:#064e3b,stroke:#34d399,color:#ecfdf5
     classDef error fill:#4c0519,stroke:#fb7185,color:#ffe4e6
-    classDef retry fill:#1c1917,stroke:#fbbf24,color:#fef3c7
 
-    [*] --> Scheduled: Schedule for Later (ISO 8601 UTC)
-    [*] --> Publishing: Publish Now (Instant Upload)
+    [*] --> Scheduled: Pick a time on the Calendar
+    [*] --> Uploading: Click "Publish Now" (Instant)
 
-    Scheduled --> DueCheck: Scheduler Loop (30-60s heartbeat)
-    DueCheck --> Publishing: scheduled_at <= now()
+    Scheduled --> Uploading: Scheduled time arrives
 
-    Publishing --> LaunchBrowser: Launch Stealth Playwright Context
-    LaunchBrowser --> VerifySession: Check Stored Cookie Auth
+    Uploading --> Complete: Upload succeeded!
+    Uploading --> Failed: Network dropped or session expired
 
-    VerifySession --> PerformUpload: Authenticated
-    VerifySession --> SessionExpired: Session Expired / Not Logged In
+    Failed --> Uploading: Click "Retry Upload"
+    Failed --> Scheduled: Change date/time on Calendar
+    Failed --> [*]: Click "Clear Failed"
 
-    PerformUpload --> Published: Upload Completed
-    PerformUpload --> UploadError: Browser / DOM Error
-    SessionExpired --> UploadError: Needs Authentication
-
-    UploadError --> AutoRetry: attempts < 3
-    AutoRetry --> Publishing: Exponential Backoff (30s)
-
-    UploadError --> Failed: attempts >= 3
-    Failed --> Scheduled: 1-Click "Retry Upload"
-    Failed --> Scheduled: Bulk "Retry All Failed"
-    Failed --> [*]: "Clear Failed" / Delete Post
-
-    Published --> [*]
+    Complete --> [*]
 
     class Scheduled scheduled
-    class Publishing,LaunchBrowser,VerifySession,PerformUpload active
-    class Published success
-    class SessionExpired,UploadError,Failed error
-    class DueCheck,AutoRetry retry
-```
-
-### Queue Management & Failure Recovery
-The Broadcast Calendar (`frontend/src/pages/CalendarPage.tsx`) provides complete queue control:
-- **🔄 Retry Upload**: 1-click retry on individual failed posts (`POST /api/schedule/{post_id}/retry`), resetting attempt counters and launching the uploader immediately.
-- **⚡ Retry All Failed**: Bulk retry button (`POST /api/schedule/retry-all`) for batch recovery after network re-connection.
-- **🗑️ Clear All Failed**: Bulk purge (`DELETE /api/schedule/failed`) to keep the queue clean.
-- **Auto-Rescheduling**: Rescheduling a failed post via `PATCH /api/schedule/{post_id}` automatically resets failure state and clears error messages.
-
-### Anti-Detection Stealth Playwright Automation
-- **Persistent Browser Profiles**: Browser sessions and cookies are stored in `~/.alfred/chromium_profiles/{platform}`.
-- **Anti-Bot Hardening**:
-  - Masks `navigator.webdriver`.
-  - Mocks `window.chrome`, browser plugins, languages, and notification permissions.
-  - Humanized variable typing cadence (40–120ms per key with natural micro-pauses).
-  - Randomized click delays and mouse hover simulations.
-- **Interactive Browser Authentication**: `POST /api/accounts/{platform}/connect` opens a visible browser window for manual login, monitors authentication success, and persists cookies automatically.
-- **Live Session Health Check**: `GET /api/accounts/{platform}/status` verifies whether saved cookies are still authenticated.
-
-### Self-Healing Browser Setup & Linux Wayland Support
-- **Automatic Self-Healing**: `ensure_playwright_browsers()` in `uploaders/stealth.py` automatically checks and installs Chromium browser binaries via `playwright install chromium` if missing.
-- **Linux Compatibility Flags**: Launch configurations include `--ozone-platform-hint=auto`, `--ignore-certificate-errors`, and `--no-sandbox` to run seamlessly across Wayland and X11 desktops (KDE Plasma, GNOME, etc.).
-
----
-
-## ⚡ Hardware Requirements & Performance Profiling
-
-Alfred is designed to run efficiently on standard developer workstations without cloud GPUs:
-
-### System Hardware Specifications
-
-| Component | Minimum Specification | Recommended Specification |
-| :--- | :--- | :--- |
-| **Processor (CPU)** | 4 Cores (Intel 8th Gen+ / AMD Ryzen 3000+) | 8+ Cores (Apple Silicon M-Series or Intel 12th Gen+ / AMD Ryzen 5000+) |
-| **System Memory (RAM)** | 8 GB RAM | 16 GB – 32 GB RAM |
-| **Graphics (GPU / VRAM)** | Integrated Graphics | NVIDIA RTX 3060+ (6 GB+ VRAM) or Apple Silicon Unified Memory |
-| **Disk Storage** | 10 GB free space on SSD | 25 GB+ free space on NVMe SSD |
-| **Operating System** | Linux (Ubuntu 20.04+, Arch, Fedora), macOS 12+, Windows 10/11 (WSL2) | Arch Linux, Ubuntu 22.04 LTS, or macOS Sonoma / Sequoia |
-
-### Per-Component Resource Footprint
-
-| Pipeline Stage | Model Architecture | RAM Usage | VRAM Usage | Latency (10-min Video Input) | Hardware Optimization |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **1. Audio Demux** | FFmpeg Direct Stream | ~50 MB | 0 MB | ~0.8s | Stream copy (`-vn -ac 1 -ar 16000`) |
-| **2. Speech-to-Text** | `faster-whisper` (`base`/`small`) | ~1.1 GB | ~850 MB | ~28–45s (CPU) / ~8–12s (CUDA) | CTranslate2 INT8, AVX2 SIMD |
-| **3. Highlight Ranker** | Multimodal Flow + RMS | ~150 MB | 0 MB | ~1.2s | NumPy vectorized scoring |
-| **4. Hook Generator** | Llama 3.2 1B GGUF | ~600 MB | ~700 MB | ~1.5s | Q4_K_M quantization |
-| **5. Kokoro-82M TTS** | StyleTTS2 ONNX | ~380 MB | ~300 MB | ~0.5s per 5s audio | ONNX Runtime CPU/CUDA |
-| **6. Voice Cloner** | OpenVoice v2 | ~180 MB | ~100 MB | ~0.3s per slice | Cosine embedding alignment |
-| **7. Smart Crop** | YOLOv8n-Face ONNX | ~220 MB | ~150 MB | 60+ FPS | Multithreaded frame inference |
-| **8. Video Assembler** | FFmpeg 9 Filtergraph | ~450–750 MB | Optional NVENC | ~15–25s per 45s reel | Multithreaded libx264 |
-
-> **Total Peak Memory**: The entire daemon operates within **1.8 GB to 2.4 GB RAM**, running smoothly alongside your IDE and browser.
-
----
-
-## 🛠️ Comprehensive Technologies Stack
-
-| Layer | Technology | Version | Purpose & Rationale |
-| :--- | :--- | :--- | :--- |
-| **Desktop Shell** | [Tauri](https://tauri.app/) | `v2.0` | Native OS windowing with minimal memory footprint (< 15MB binary vs 150MB+ Electron). |
-| **Desktop Language** | [Rust](https://www.rust-lang.org/) | `1.77+` | Memory-safe window management and native system file dialogs. |
-| **Frontend Framework** | [React](https://react.dev/) | `19.0` | Modern reactive UI utilizing Concurrent Mode for fluid playback and timeline rendering. |
-| **Frontend Language** | [TypeScript](https://www.typescriptlang.org/) | `5.8` | Strict end-to-end type safety for jobs, clips, timecodes, framing modes, and WebSocket events. |
-| **Styling & Icons** | Tailwind CSS & Lucide Icons | Latest | Studio Atelier hardware design system styling with responsive Lucide iconography. |
-| **Build Tooling** | [Vite](https://vitejs.dev/) | `7.3` | Ultra-fast ESM compilation and Hot Module Replacement. |
-| **State Management** | [Zustand](https://zustand.docs.pmnd.rs/) | `5.0` | Decoupled global state stores. |
-| **Backend Framework** | [FastAPI](https://fastapi.tiangolo.com/) | `0.115` | High-concurrency asynchronous Python ASGI web framework with OpenAPI docs. |
-| **Async Server** | [Uvicorn](https://www.uvicorn.org/) | `0.34` | Lightning-fast ASGI production server with WebSocket protocol support. |
-| **Package Manager** | [uv](https://astral.sh/uv) | Latest | Fast Rust-based Python package manager and deterministic virtual environment orchestrator. |
-| **Embedded Database** | [SQLite](https://www.sqlite.org/) | `3.45+` | File-based embedded relational database with zero external dependencies. |
-| **Async DB Driver** | [aiosqlite](https://aiosqlite.omnilib.dev/) | `0.20` | Non-blocking asynchronous SQLite bindings with WAL journal mode. |
-| **Schema Validation** | [Pydantic](https://docs.pydantic.dev/) | `v2.10` | Fast data validation, request sanitization, and JSON schema generation. |
-| **Speech-to-Text** | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | `1.1` | Whisper implementation using CTranslate2 INT8 quantization, 5-beam search & Silero VAD. |
-| **LLM Inference** | [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) | `0.3.7` | Local Llama 3.2 1B Instruct GGUF runtime for viral highlight ranking and hook writing. |
-| **Voice Synthesis** | [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) | `0.19 ONNX` | 82M parameter local TTS model with natural phrasing and human prosody. |
-| **Voice Cloning** | [OpenVoice v2](https://github.com/myshell-ai/OpenVoice) | `v2.0` | Speaker tone converter transferring acoustic embeddings to synthesized narration offline. |
-| **Neural Runtime** | [ONNX Runtime](https://onnxruntime.ai/) | `1.20` | Cross-platform neural inference engine optimized for CPU and CUDA backends. |
-| **Computer Vision** | [YOLOv8n-Face](https://github.com/akanametov/yolo-face) & OpenCV | `1.0` / `4.10` | Real-time face detection, dynamic 9:16 framing tracking, and optical-flow motion analysis. |
-| **Media Processing** | [FFmpeg](https://ffmpeg.org/) & [FFprobe](https://ffmpeg.org/) | `6.0+` / `9.0+` | Video slicing, aspect ratio transformation, audio sidechain ducking, and subtitle rendering. |
-| **Browser Automation** | [Playwright](https://playwright.dev/) | `1.50+` | Headless/interactive browser automation with stealth fingerprint masking for social uploads. |
-
----
-
-## 📁 Repository Directory Structure
-
-```text
-Alfred/
-├── backend/                              # FastAPI Python backend daemon
-│   ├── main.py                           # FastAPI application entry point & static SPA server
-│   ├── config.py                         # System paths, server ports, and model configurations
-│   ├── database.py                       # SQLite schema, async connection pool, and migrations
-│   ├── models/                           # Pydantic schemas (Job, Clip, Schedule, Account)
-│   │   ├── __init__.py
-│   │   ├── job.py
-│   │   └── schedule.py
-│   ├── pipeline/                         # Core local AI processing pipeline
-│   │   ├── orchestrator.py               # Multi-stage automated pipeline coordinator
-│   │   ├── transcriber.py                # Speech-to-text engine (faster-whisper + Silero VAD)
-│   │   ├── analyzer.py                   # Highlight ranker & viral scoring algorithms
-│   │   ├── multimodal_analyzer.py        # Optical flow motion, RMS energy & storyboards
-│   │   ├── hook_generator.py             # Spoken & visual attention hook generator (Llama 3.2)
-│   │   ├── tts.py                        # Kokoro-82M ONNX Text-to-Speech engine
-│   │   ├── voice_cloner.py               # OpenVoice v2 tone converter
-│   │   ├── smart_crop.py                 # YOLOv8n-Face tracking & 9:16 layout logic
-│   │   └── assembler.py                  # FFmpeg 9 video slicer, master ducking & overlays
-│   ├── routers/                          # REST & WebSocket API endpoints
-│   │   ├── jobs.py                       # Video upload, intake jobs, & telemetry
-│   │   ├── clips.py                      # Clip fine-tuning, re-rendering & voice synthesis
-│   │   ├── schedule.py                   # Calendar queue, retry logic, & instant publish
-│   │   ├── accounts.py                   # Interactive stealth browser login & session checks
-│   │   ├── settings.py                   # Model readiness checks & voice reference studio
-│   │   └── ws.py                         # Real-time WebSocket telemetry gateway
-│   ├── scheduler/                        # Background broadcast scheduler
-│   │   └── worker.py                     # Cron loop polling due posts and dispatching uploads
-│   ├── uploaders/                        # Social platform automation adapters
-│   │   ├── base.py                       # Abstract base uploader interface
-│   │   ├── stealth.py                    # Anti-detection stealth scripts & browser installer
-│   │   ├── youtube.py                    # YouTube Studio Shorts uploader
-│   │   ├── instagram.py                  # Instagram Reels uploader
-│   │   └── twitter.py                    # X (Twitter) video uploader
-│   ├── pyproject.toml                    # Python package dependencies managed by uv
-│   └── uv.lock                           # Deterministic dependency lockfile
-├── frontend/                             # Primary frontend application (React 19 + TypeScript + Vite)
-│   ├── src/
-│   │   ├── pages/                        # Primary application screens
-│   │   │   ├── ProcessPage.tsx           # Ingestion Bay & live telemetry stream
-│   │   │   ├── ReviewPage.tsx            # Editorial Review Console & clip fine-tuning
-│   │   │   ├── CalendarPage.tsx          # Broadcast Calendar, retry deck & queue management
-│   │   │   └── SettingsPage.tsx          # AI models readiness, accounts & voice recorder
-│   │   ├── components/                   # Core modular components
-│   │   │   ├── ClipTimelineEditor.tsx    # NLE multi-track sequencer deck & live video monitor
-│   │   │   ├── Sidebar.tsx               # Primary navigation sidebar
-│   │   │   └── Modal.tsx                 # Reusable accessible modal dialog
-│   │   ├── context/                      # React contexts
-│   │   │   └── WebSocketContext.tsx      # Global WebSocket telemetry provider
-│   │   ├── hooks/                        # Custom React hooks
-│   │   │   └── useWebSocket.ts           # Auto-reconnecting WebSocket hook
-│   │   ├── lib/                          # Client libraries & utilities
-│   │   │   ├── api.ts                    # Typed API client for all backend REST endpoints
-│   │   │   ├── types.ts                  # TypeScript domain models (Job, Clip, Schedule, etc.)
-│   │   │   └── utils.ts                  # Timecode formatters, classnames (cn)
-│   │   ├── App.tsx                       # Root layout & route definitions
-│   │   ├── App.css                       # Studio Atelier layout styles
-│   │   ├── index.css                     # Tailwind CSS design system tokens
-│   │   └── main.tsx                      # Vite React entry point
-│   ├── package.json                      # Frontend dependencies & scripts
-│   ├── vite.config.ts                    # Vite compilation config & API proxying
-│   └── tsconfig.json                     # TypeScript compiler configuration
-├── models/                               # Local AI model weights directory
-│   ├── llama-3.2-1b.Q4_K_M.gguf          # Llama 3.2 1B Instruct GGUF
-│   ├── kokoro-82m.onnx                   # Kokoro-82M ONNX TTS
-│   ├── voices.bin / voices.json          # Kokoro voice embedding weights
-│   ├── yolov8n-face.onnx                 # YOLOv8n face detection model
-│   └── xtts-v2/ / openvoice/             # Speaker tone converter models
-├── src-tauri/                            # Native desktop shell (Tauri v2 + Rust)
-│   ├── Cargo.toml                        # Rust dependencies
-│   ├── tauri.conf.json                   # Desktop window configuration & permissions
-│   └── src/main.rs                       # Rust desktop entry point
-├── dist/                                 # Compiled production frontend build
-└── README.md                             # Master project documentation
+    class Uploading active
+    class Complete success
+    class Failed error
 ```
 
 ---
 
-## 🗄️ Database Architecture & Persistence
+## ⚡ Hardware Requirements (Can my laptop run this?)
 
-Alfred uses an embedded SQLite database with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) located at `~/.alfred/db/alfred.db`:
+Yes! Alfred was specifically engineered to run on standard modern laptops without requiring a $2,000 graphics card.
 
-### Entity-Relationship Diagram
-
-```mermaid
-erDiagram
-    JOBS ||--o{ TRANSCRIPTS : "contains"
-    JOBS ||--o{ CLIPS : "generates"
-    CLIPS ||--o{ SCHEDULED_POSTS : "publishes"
-    SOCIAL_ACCOUNTS ||--o{ SCHEDULED_POSTS : "dispatches_to"
-
-    JOBS {
-        string id PK
-        string video_path
-        string video_name
-        string status
-        datetime created_at
-        datetime updated_at
-        string error_msg
-    }
-
-    TRANSCRIPTS {
-        string id PK
-        string job_id FK
-        string full_text
-        string segments
-        string words
-        datetime created_at
-    }
-
-    CLIPS {
-        string id PK
-        string job_id FK
-        int rank
-        float start_time
-        float end_time
-        float duration
-        string transcript_text
-        string hook_text
-        string hook_audio_path
-        string output_path
-        string status
-        float visual_score
-        float audio_score
-        float hook_score
-        float retention_score
-        string storyboard_paths
-        string audio_mode
-        float hook_offset_sec
-    }
-
-    SCHEDULED_POSTS {
-        string id PK
-        string clip_id FK
-        string platform
-        datetime scheduled_at
-        string title
-        string description
-        string tags
-        string status
-        int attempts
-        string last_error
-        datetime created_at
-        datetime updated_at
-    }
-
-    SOCIAL_ACCOUNTS {
-        string id PK
-        string platform UK
-        string profile_path
-        string display_name
-        datetime connected_at
-        datetime last_used_at
-    }
-
-    SETTINGS {
-        string key PK
-        string value
-    }
-```
-
-### SQL Schema Definition
-
-```sql
--- Core job tracking
-CREATE TABLE jobs (
-    id          TEXT PRIMARY KEY,
-    video_path  TEXT NOT NULL,
-    video_name  TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'queued',
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-    error_msg   TEXT
-);
-
--- Whisper transcription output
-CREATE TABLE transcripts (
-    id          TEXT PRIMARY KEY,
-    job_id      TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-    full_text   TEXT NOT NULL,
-    segments    TEXT NOT NULL,
-    words       TEXT NOT NULL,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- AI-identified clip segments & editorial parameters
-CREATE TABLE clips (
-    id                    TEXT PRIMARY KEY,
-    job_id                TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-    rank                  INTEGER NOT NULL,
-    start_time            REAL NOT NULL,
-    end_time              REAL NOT NULL,
-    duration              REAL NOT NULL,
-    transcript_text       TEXT NOT NULL,
-    hook_text             TEXT,
-    hook_audio_path       TEXT,
-    output_path           TEXT,
-    status                TEXT DEFAULT 'pending',
-    rationale             TEXT,
-    visual_score          REAL DEFAULT 0.0,
-    audio_score           REAL DEFAULT 0.0,
-    hook_score            REAL DEFAULT 0.0,
-    retention_score       REAL DEFAULT 0.0,
-    visual_hook_rationale TEXT,
-    storyboard_paths      TEXT,
-    audio_mode            TEXT DEFAULT 'original',
-    hook_offset_sec       REAL DEFAULT 0.0,
-    created_at            DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Scheduled & published social posts
-CREATE TABLE scheduled_posts (
-    id              TEXT PRIMARY KEY,
-    clip_id         TEXT NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
-    platform        TEXT NOT NULL,
-    scheduled_at    DATETIME NOT NULL,
-    title           TEXT,
-    description     TEXT,
-    tags            TEXT,
-    status          TEXT DEFAULT 'scheduled',
-    attempts        INTEGER DEFAULT 0,
-    last_error      TEXT,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Authenticated browser sessions
-CREATE TABLE social_accounts (
-    id              TEXT PRIMARY KEY,
-    platform        TEXT NOT NULL UNIQUE,
-    profile_path    TEXT NOT NULL,
-    display_name    TEXT,
-    connected_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_used_at    DATETIME
-);
-```
-
----
-
-## 📡 Complete REST & WebSocket API Surface
-
-The backend daemon exposes a comprehensive REST and WebSocket interface:
-
-### 1. Ingestion & Jobs (`/api/jobs`)
-| Method | Endpoint | Request Body | Description |
-|---|---|---|---|
-| `POST` | `/api/jobs/upload` | Multipart: `file: UploadFile`, `clip_count: int` | Ingest long-form video file and trigger background pipeline |
-| `GET` | `/api/jobs` | — | List all historical ingestion jobs |
-| `GET` | `/api/jobs/{job_id}` | — | Retrieve job details, telemetry status, and clip list |
-| `DELETE`| `/api/jobs/{job_id}` | — | Delete job and remove associated video assets from disk |
-| `POST` | `/api/jobs/{job_id}/cancel` | — | Cancel an in-progress pipeline job |
-
-### 2. Clips & Editorial Deck (`/api/clips`)
-| Method | Endpoint | Request Body | Description |
-|---|---|---|---|
-| `GET` | `/api/clips/{clip_id}` | — | Retrieve clip metadata, scores, and paths |
-| `GET` | `/api/clips/job/{job_id}`| — | Retrieve all candidate clips for a specific job |
-| `PATCH` | `/api/clips/{clip_id}` | `{status, hook_text, start_time, end_time, audio_mode, hook_offset_sec}` | Update clip approval status, hook text, or trim boundaries |
-| `POST` | `/api/clips/{clip_id}/rerender` | `{start_time, end_time, framing_mode, audio_mode, hook_offset_sec}` | Re-assemble clip with custom trim boundaries, framing, or audio ducking |
-| `POST` | `/api/clips/{clip_id}/synthesize-voice` | `{text, voice_preset, use_voice_clone, sample_name}` | Synthesize Kokoro or cloned voiceover track |
-
-### 3. Distribution & Schedule (`/api/schedule`)
-| Method | Endpoint | Request Body | Description |
-|---|---|---|---|
-| `POST` | `/api/schedule/publish-now` | `{clip_id, platform, title, description, tags}` | **Immediately upload clip right now** in the background |
-| `POST` | `/api/schedule` | `{clip_id, platform, scheduled_at, title, description, tags}` | Schedule a clip for future publication |
-| `GET` | `/api/schedule` | Query: `from_date`, `to_date` | Retrieve scheduled calendar posts |
-| `PATCH` | `/api/schedule/{post_id}` | `{scheduled_at, title, description, tags, status}` | Reschedule post or update metadata (resets failures) |
-| `POST` | `/api/schedule/{post_id}/retry` | — | Reset a failed post to scheduled and trigger immediate upload |
-| `POST` | `/api/schedule/retry-all` | — | Reset all failed posts and trigger immediate uploads |
-| `DELETE`| `/api/schedule/failed` | — | Bulk delete all failed scheduled posts |
-| `DELETE`| `/api/schedule/{post_id}` | — | Cancel and delete a specific scheduled post |
-
-### 4. Social Accounts & Stealth Auth (`/api/accounts`)
-| Method | Endpoint | Query / Body | Description |
-|---|---|---|---|
-| `GET` | `/api/accounts` | — | List all connected social account profiles |
-| `GET` | `/api/accounts/{platform}/status` | — | Check whether saved browser session cookies are still authenticated |
-| `POST` | `/api/accounts/{platform}/connect` | Query: `interactive: bool` | Launch visible browser window for manual login and capture session |
-| `DELETE`| `/api/accounts/{platform}` | — | Disconnect platform account and delete local profile |
-
-### 5. Settings & Local AI Studio (`/api/settings`)
-| Method | Endpoint | Request Body | Description |
-|---|---|---|---|
-| `GET` | `/api/settings` | — | Retrieve system configuration and preferences |
-| `POST` | `/api/settings` | Key-value settings object | Update application configuration |
-| `GET` | `/api/settings/models` | — | Retrieve local readiness status of all 5 local AI models |
-| `GET` | `/api/settings/voice-samples` | — | List recorded/uploaded voice cloning reference samples |
-| `POST` | `/api/settings/voice-sample` | Multipart: `file: UploadFile` | Upload or save in-browser mic recording as reference sample |
-| `DELETE`| `/api/settings/voice-samples/{filename}` | — | Delete a stored voice cloning sample |
-
-### 6. Media Streaming & Telemetry
-| Protocol | Endpoint | Description |
+| Component | Minimum | Recommended |
 |---|---|---|
-| `GET` | `/api/media?path=...` | Byte-range video and storyboard frame streaming endpoint (`Accept-Ranges: bytes`) |
-| `GET` | `/api/health` | System health check, database status, and uptime |
-| `WS` | `/ws` | Real-time bi-directional pipeline telemetry channel |
+| **CPU** | 4 Cores (Intel 8th Gen+ or AMD Ryzen 3000+) | 8+ Cores (Apple Silicon M1/M2/M3/M4 or Intel Core i7 12th Gen+) |
+| **RAM** | 8 GB | 16 GB |
+| **GPU** | Built-in graphics (Intel Iris / AMD Radeon) | NVIDIA RTX 3060+ (faster rendering) or Apple Silicon |
+| **Free Storage** | 10 GB on SSD | 25 GB on SSD (for video files and models) |
+| **Operating System** | Linux (Ubuntu, Arch, Fedora), macOS 12+, or Windows 10/11 (WSL2) | Linux or macOS |
+
+> 📊 **Real Memory Usage**: While processing a 10-minute video, Alfred uses only **1.8 GB to 2.4 GB of RAM**, so your computer won't freeze up while it works.
 
 ---
 
-## 🚀 Installation & Quickstart Guide
+## 🚀 Quickstart Guide (Get running in 3 minutes)
 
-### 1. Prerequisites
-- **Operating System**: Linux (Ubuntu 20.04+, Arch, Fedora), macOS 12+, Windows 10/11 (WSL2 recommended).
-- **FFmpeg 6.0+ or 9.0+**:
-  ```bash
-  # Ubuntu / Debian
-  sudo apt update && sudo apt install -y ffmpeg
+### Step 1: Install System Tools
+Make sure `ffmpeg` is installed on your computer:
+```bash
+# Ubuntu / Debian
+sudo apt update && sudo apt install -y ffmpeg
 
-  # Arch Linux
-  sudo pacman -S ffmpeg
+# Arch Linux
+sudo pacman -S ffmpeg
 
-  # macOS (Homebrew)
-  brew install ffmpeg
-  ```
-- **Python 3.10+**: Ensure Python is available on your PATH.
-- **uv**: Blazing-fast Python package installer:
-  ```bash
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  ```
-- **Node.js 18+ & npm**: Required to build the frontend.
+# macOS (Homebrew)
+brew install ffmpeg
+```
 
----
+Make sure **uv** (the fast Python manager) is installed:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
-### 2. Clone Repository
+### Step 2: Clone the Project
 ```bash
 git clone https://github.com/DivyamJoshi2005/Alfred.git
 cd Alfred
 ```
 
----
-
-### 3. Backend Setup (Python + uv)
+### Step 3: Start the Backend Server
 ```bash
 cd backend
-
-# Install all backend dependencies in an isolated virtual environment
 uv sync
-
-# Launch the FastAPI daemon (runs on http://127.0.0.1:8741)
 uv run python main.py
 ```
-*On first startup, Alfred automatically initializes the SQLite database at `~/.alfred/db/alfred.db` and creates necessary cache directories.*
+*The server will start at `http://127.0.0.1:8741` and automatically set up its database.*
 
----
+### Step 4: Open the Studio Interface
+Open your web browser and visit:  
+👉 **`http://127.0.0.1:8741`**
 
-### 4. Frontend Setup (React + Vite)
-In a separate terminal:
+*(Optional)* If you want to develop or edit the frontend code live with hot-reloading:
 ```bash
 cd frontend
-
-# Install frontend dependencies
 npm install
-
-# Start Vite development server with Hot Module Replacement
 npm run dev
 ```
-*Access the development UI at `http://localhost:5173`.*
-
-To compile the production distribution served directly by the backend:
-```bash
-cd frontend
-npm run build
-```
-Once built, navigating to `http://127.0.0.1:8741` serves the full compiled application directly from the FastAPI server!
 
 ---
 
-### 5. Desktop Shell Setup (Tauri v2)
-To run Alfred as a native, borderless desktop application:
-```bash
-npm run tauri dev
-```
-To compile a native distribution binary for your operating system:
-```bash
-npm run tauri build
+## 📁 Project Directory Tour
+
+Here is what each folder in Alfred does:
+
+```text
+Alfred/
+├── backend/                  # The Python server that runs AI & renders video
+│   ├── main.py               # Starts the server and serves the web interface
+│   ├── config.py             # System settings, model paths, and default ports
+│   ├── database.py           # SQLite database setup (jobs, clips, schedule)
+│   ├── pipeline/             # The 6 core processing steps
+│   │   ├── transcriber.py    # Whisper speech-to-text
+│   │   ├── multimodal_analyzer.py # Finds the best highlight moments
+│   │   ├── hook_generator.py # Llama 3.2 hook script writer
+│   │   ├── tts.py            # Kokoro voice generator
+│   │   ├── voice_cloner.py   # OpenVoice voice clone matcher
+│   │   ├── smart_crop.py     # YOLO face detection
+│   │   └── assembler.py      # FFmpeg video slicer and crop renderer
+│   ├── routers/              # API web routes (jobs, clips, schedule, accounts)
+│   ├── scheduler/            # Background timer that triggers scheduled uploads
+│   └── uploaders/            # Playwright browser scripts for YouTube, IG, and X
+├── frontend/                 # The React 19 web application
+│   ├── src/
+│   │   ├── pages/            # The 4 main screens (Process, Review, Calendar, Settings)
+│   │   ├── components/       # UI parts (Timeline Editor, Modals, Sidebar)
+│   │   ├── lib/              # API helpers, formatters, and TypeScript types
+│   │   └── App.tsx           # App routing and layout
+├── models/                   # Folder where AI model weights live locally
+└── dist/                     # The compiled production frontend
 ```
 
 ---
 
-## ⚙️ Configuration & Environment Variables
+## 📡 Simple API Reference
 
-Default settings can be customized in `backend/config.py` or overridden via environment variables:
+For developers who want to control Alfred programmatically:
 
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `ALFRED_PORT` | `8741` | Daemon HTTP & WebSocket port |
-| `ALFRED_MODELS_DIR` | `../models` | Directory containing local AI model weights |
-| `ALFRED_FFMPEG_PATH` | `ffmpeg` | Path to FFmpeg executable |
-| `ALFRED_DATA_DIR` | `~/.alfred` | Directory for database, browser profiles, and logs |
-| `ALFRED_PROJECTS_DIR`| `~/Alfred/projects` | Directory for rendered project cutdowns and cache |
+| Action | Route | What it does |
+|---|---|---|
+| **Upload video** | `POST /api/jobs/upload` | Send a video file to begin extracting highlights |
+| **Get job status** | `GET /api/jobs/{id}` | Check progress (0% to 100%) and view extracted clips |
+| **Get clips** | `GET /api/clips/job/{job_id}` | Get all candidate clips with their scores and storyboard images |
+| **Re-render clip** | `POST /api/clips/{id}/rerender` | Re-render with new start/end time, framing mode, or audio mode |
+| **Generate voice** | `POST /api/clips/{id}/synthesize-voice` | Generate speech audio for a hook using Kokoro or your cloned voice |
+| **Publish right now** | `POST /api/schedule/publish-now` | Immediately trigger background upload to YouTube/Instagram/X |
+| **Schedule for later**| `POST /api/schedule` | Queue a clip for future upload at a specific date & time |
+| **Retry upload** | `POST /api/schedule/{id}/retry` | Retry a failed social media upload |
+| **Connect account** | `POST /api/accounts/{platform}/connect`| Open browser window to log in to YouTube, IG, or X |
+| **Check models** | `GET /api/settings/models` | Check if all 5 local AI models are downloaded and ready |
+| **Live telemetry** | `WS /ws` | WebSocket channel streaming live progress percentages |
 
 ---
 
-## ❓ Troubleshooting & FAQs
+## ❓ Frequently Asked Questions & Fixes
 
-### 1. Playwright Missing Browser Executable
-**Error**: `Executable doesn't exist at ~/.cache/ms-playwright/chromium_headless_shell-...`  
-**Fix**: Alfred now includes self-healing browser verification (`ensure_playwright_browsers()`). If installing manually:
-```bash
-cd backend
-.venv/bin/playwright install chromium
-```
+### 1. Why does my upload fail with "Session expired or not logged in"?
+Alfred uploads using your real browser session. If you haven't logged in yet:
+1. Go to **Settings → Connected Accounts**.
+2. Click **"Log In via Browser"** next to YouTube, Instagram, or X.
+3. A real browser window will appear. Log into your account and wait until your creator dashboard loads.
+4. Close the browser window.
+5. Go back to the **Calendar** page and click **"Retry Upload"**.
 
-### 2. Port 8741 Already in Use
-**Error**: `[Errno 98] error while attempting to bind on address ('127.0.0.1', 8741)`  
-**Fix**: Another instance of the backend is already running. Terminate it:
+### 2. Can I use Alfred completely without an internet connection?
+**Yes!** Once the AI models are downloaded to your `models/` folder, the entire transcription, highlight scoring, voiceover generation, and 9:16 rendering pipeline runs 100% offline. You can edit videos on an airplane. Internet is only required when uploading to YouTube/Instagram/X.
+
+### 3. What if it says "Port 8741 already in use"?
+Another copy of the server is running in the background. Stop it with:
 ```bash
 fuser -k 8741/tcp
 ```
+Then start the server again with `uv run python main.py`.
 
-### 3. Social Upload Shows "Failed" in Calendar
-**Cause**: The social platform session has expired, or the account was never logged in.  
-**Fix**:
-1. Go to **Settings (`/settings`)** → **Connected Accounts**.
-2. Notice the live status badge (**Amber**: Not Logged In / Expired).
-3. Click **"Log In via Browser"** to launch the interactive browser.
-4. Complete login until your creator studio/dashboard loads, then close the browser.
-5. Go to **Calendar (`/calendar`)** and click **"Retry Upload"** or **"Retry All"**.
-
-### 4. FFmpeg Stray % in Drawtext Filter
-**Cause**: FFmpeg 9 treats `%` characters in `drawtext` filters as format specifiers.  
-**Fix**: Alfred automatically sanitizes `%` characters to ` PERCENT` and escapes colons, quotes, and backslashes before invoking the filtergraph.
+### 4. Will my slides or code get cut off in vertical video?
+**No!** Simply make sure the framing mode is set to **Canvas Fit** (which is the default). Canvas Fit places the full 16:9 widescreen presentation in the center and fills the empty top and bottom with a soft blurred background. 100% of your text, diagrams, and code remain fully legible.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for full details.
+This project is open-source and released under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 ---
 
