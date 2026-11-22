@@ -156,9 +156,12 @@ def main():
     app = create_app(port=args.port)
 
     # Write port to file for Tauri to discover
-    port_file = __import__("config").ALFRED_DATA_DIR / "port"
-    port_file.parent.mkdir(parents=True, exist_ok=True)
-    port_file.write_text(str(args.port))
+    try:
+        port_file = __import__("config").ALFRED_DATA_DIR / "port"
+        port_file.parent.mkdir(parents=True, exist_ok=True)
+        port_file.write_text(str(args.port))
+    except Exception as e:
+        logger.warning(f"Could not write port file: {e}")
 
     uvicorn.run(
         app,

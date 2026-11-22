@@ -183,6 +183,7 @@ export const settings = {
   }),
   models: () => request<Record<string, import('./types').ModelStatus>>('/api/settings/models'),
   voiceSamples: () => request<import('./types').VoiceSample[]>('/api/settings/voice-samples'),
+  getVoicePreviewUrl: (voice: string) => `${getApiBase()}/api/settings/voice-preview?voice=${encodeURIComponent(voice)}`,
   uploadVoiceSample: async (file: File, sampleName = 'my_voice') => {
     const form = new FormData()
     form.append('file', file)

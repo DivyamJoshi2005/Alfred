@@ -54,6 +54,8 @@ class ClipResponse(BaseModel):
     audio_mode: Optional[str] = "original"
     hook_offset_sec: Optional[float] = 0.0
     ducking_volume: Optional[float] = 0.15
+    framing_mode: Optional[str] = "presentation_fit"
+    crop_coords: Optional[str] = None
     tags: Optional[str] = None
     created_at: str
 

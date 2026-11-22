@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS clips (
     audio_mode      TEXT DEFAULT 'original',
     hook_offset_sec REAL DEFAULT 0.0,
     ducking_volume  REAL DEFAULT 0.15,
+    framing_mode    TEXT DEFAULT 'presentation_fit',
+    crop_coords     TEXT,
     tags            TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -120,6 +122,8 @@ async def init_db():
             ("audio_mode", "TEXT DEFAULT 'original'"),
             ("hook_offset_sec", "REAL DEFAULT 0.0"),
             ("ducking_volume", "REAL DEFAULT 0.15"),
+            ("framing_mode", "TEXT DEFAULT 'presentation_fit'"),
+            ("crop_coords", "TEXT"),
             ("tags", "TEXT"),
         ]
         cursor = await db.execute("PRAGMA table_info(clips)")

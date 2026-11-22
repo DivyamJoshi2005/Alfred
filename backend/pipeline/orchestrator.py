@@ -189,11 +189,13 @@ async def run_pipeline(job_id: str):
             job_id=job_id,
         )
 
-        # Update output paths in DB
+        # Update output paths and smart crop coordinates in DB
+        import json
         for seg in final_clips:
+            coords = json.dumps(seg["crop_coords"]) if seg.get("crop_coords") else None
             await db.execute(
-                "UPDATE clips SET output_path = ?, status = 'rendered' WHERE id = ?",
-                (str(seg["output_path"]), seg["clip_id"]),
+                "UPDATE clips SET output_path = ?, status = 'rendered', crop_coords = COALESCE(crop_coords, ?) WHERE id = ?",
+                (str(seg["output_path"]), coords, seg["clip_id"]),
             )
         await db.commit()
 

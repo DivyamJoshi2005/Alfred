@@ -16,7 +16,8 @@ import {
   Square,
   RotateCcw,
   Sparkles,
-  Volume2
+  Volume2,
+  Play
 } from 'lucide-react'
 import { settings as settingsApi, accounts as accountsApi } from '../lib/api'
 import type { SocialAccount, ModelStatus, VoiceSample } from '../lib/types'
@@ -57,6 +58,36 @@ export function SettingsPage() {
   const [selectedVoiceFile, setSelectedVoiceFile] = useState<File | null>(null)
   const [savingVoice, setSavingVoice] = useState(false)
   const [voiceFeedback, setVoiceFeedback] = useState<string | null>(null)
+
+  // Audition Voice Player
+  const [auditioningVoice, setAuditioningVoice] = useState<string | null>(null)
+  const auditionAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause()
+        auditionAudioRef.current = null
+      }
+    }
+  }, [])
+
+  const handlePlayVoiceAudition = (voiceId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (auditionAudioRef.current) {
+      auditionAudioRef.current.pause()
+    }
+    if (auditioningVoice === voiceId) {
+      setAuditioningVoice(null)
+      return
+    }
+    setAuditioningVoice(voiceId)
+    const audio = new Audio(settingsApi.getVoicePreviewUrl(voiceId))
+    auditionAudioRef.current = audio
+    audio.play().catch(err => console.warn('Audition playback failed:', err))
+    audio.onended = () => setAuditioningVoice(null)
+    audio.onerror = () => setAuditioningVoice(null)
+  }
 
   // Live Voice Recording
   const [voiceInputMode, setVoiceInputMode] = useState<'record' | 'upload'>('record')
@@ -618,15 +649,16 @@ export function SettingsPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {KOKORO_VOICES.map(voice => {
                 const isSelected = voicePreset === voice.id && !voiceCloningEnabled
+                const isAuditioning = auditioningVoice === voice.id
                 return (
                   <div
                     key={voice.id}
                     onClick={() => handleSelectVoicePreset(voice.id)}
                     className={cn(
-                      "p-3.5 rounded-lg border text-left cursor-pointer transition-all flex flex-col justify-between",
+                      "p-3.5 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between space-y-2.5",
                       isSelected
                         ? "border-accent bg-accent-light/30 ring-1 ring-accent shadow-xs"
                         : "border-border hover:border-stone-400 bg-white"
@@ -637,20 +669,39 @@ export function SettingsPage() {
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-semibold text-text">{voice.name}</p>
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200">
-                            {voice.accent} {voice.gender === 'female' ? '♀' : '♂'}
+                            {voice.gender === 'female' ? '♀ Female' : '♂ Male'}
                           </span>
                         </div>
                         {isSelected && <Check size={16} className="text-accent shrink-0" />}
                       </div>
-                      <p className="text-xs text-text-muted leading-snug">{voice.desc}</p>
+                      <p className="text-xs text-text-muted leading-snug line-clamp-2">{voice.desc}</p>
                     </div>
-                    <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
-                      <span className="text-stone-500 font-medium">{voice.tag}</span>
-                      {isSelected ? (
-                        <span className="font-semibold text-accent">Active Voice</span>
-                      ) : (
-                        <span className="text-text-muted hover:text-text">Click to Select</span>
-                      )}
+
+                    <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[11px]">
+                      <span className="text-stone-500 font-medium text-[10px]">{voice.tag}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => handlePlayVoiceAudition(voice.id, e)}
+                        className={cn(
+                          "inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer border",
+                          isAuditioning
+                            ? "bg-accent text-white border-accent animate-pulse"
+                            : "bg-stone-100 hover:bg-stone-200 text-text border-stone-200"
+                        )}
+                        title="Hear a live voice sample"
+                      >
+                        {isAuditioning ? (
+                          <>
+                            <Square size={9} className="fill-white" />
+                            <span>Stop</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play size={9} className="fill-current" />
+                            <span>Listen</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
                 )

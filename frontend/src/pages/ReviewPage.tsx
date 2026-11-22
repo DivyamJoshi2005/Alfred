@@ -133,6 +133,7 @@ export function ReviewPage() {
   const [expandedClipId, setExpandedClipId] = useState<string | null>(null)
   const [editHooks, setEditHooks] = useState<Record<string, string>>({})
   const [audioModes, setAudioModes] = useState<Record<string, string>>({})
+  const [framingModes, setFramingModes] = useState<Record<string, string>>({})
   const [trimStarts, setTrimStarts] = useState<Record<string, number>>({})
   const [trimEnds, setTrimEnds] = useState<Record<string, number>>({})
   const [hookOffsets, setHookOffsets] = useState<Record<string, number>>({})
@@ -223,6 +224,7 @@ export function ReviewPage() {
       // Initialize edit fields
       const hooks: Record<string, string> = {}
       const aModes: Record<string, string> = {}
+      const fModes: Record<string, string> = {}
       const tStarts: Record<string, number> = {}
       const tEnds: Record<string, number> = {}
       const hOffsets: Record<string, number> = {}
@@ -230,12 +232,14 @@ export function ReviewPage() {
       data.forEach(c => {
         hooks[c.id] = c.hook_text || ''
         aModes[c.id] = c.audio_mode || 'original'
+        fModes[c.id] = c.framing_mode || 'presentation_fit'
         tStarts[c.id] = c.start_time
         tEnds[c.id] = c.end_time
         hOffsets[c.id] = c.hook_offset_sec ?? 0.0
       })
       setEditHooks(hooks)
       setAudioModes(aModes)
+      setFramingModes(fModes)
       setTrimStarts(tStarts)
       setTrimEnds(tEnds)
       setHookOffsets(hOffsets)
@@ -298,6 +302,7 @@ export function ReviewPage() {
       const start_time = trimStarts[clip.id] ?? clip.start_time
       const end_time = trimEnds[clip.id] ?? clip.end_time
       const audio_mode = audioModes[clip.id] || 'original'
+      const framing_mode = framingModes[clip.id] || clip.framing_mode || 'presentation_fit'
       const hook_offset_sec = hookOffsets[clip.id] ?? 0.0
       const ducking_volume = duckingVolumes[clip.id] ?? clip.ducking_volume ?? 0.15
       const hook_text = editHooks[clip.id] ?? clip.hook_text
@@ -306,7 +311,7 @@ export function ReviewPage() {
       const updated = await clipsApi.rerender(clip.id, {
         start_time,
         end_time,
-        framing_mode: 'presentation_fit',
+        framing_mode,
         audio_mode,
         hook_offset_sec,
         ducking_volume,
@@ -797,12 +802,14 @@ export function ReviewPage() {
                         startTime={trimStarts[clip.id] ?? clip.start_time}
                         endTime={trimEnds[clip.id] ?? clip.end_time}
                         audioMode={audioModes[clip.id] || clip.audio_mode || 'original'}
+                        framingMode={framingModes[clip.id] || clip.framing_mode || 'presentation_fit'}
                         hookOffsetSec={hookOffsets[clip.id] ?? clip.hook_offset_sec ?? 0.0}
                         hookText={editHooks[clip.id] ?? clip.hook_text ?? ''}
                         duckingVolume={duckingVolumes[clip.id] ?? clip.ducking_volume ?? 0.15}
                         onStartTimeChange={(time) => setTrimStarts(prev => ({ ...prev, [clip.id]: time }))}
                         onEndTimeChange={(time) => setTrimEnds(prev => ({ ...prev, [clip.id]: time }))}
                         onAudioModeChange={(mode) => setAudioModes(prev => ({ ...prev, [clip.id]: mode }))}
+                        onFramingModeChange={(mode) => setFramingModes(prev => ({ ...prev, [clip.id]: mode }))}
                         onHookOffsetChange={(offset) => setHookOffsets(prev => ({ ...prev, [clip.id]: offset }))}
                         onHookTextChange={(text) => setEditHooks(prev => ({ ...prev, [clip.id]: text }))}
                         onDuckingVolumeChange={(vol) => setDuckingVolumes(prev => ({ ...prev, [clip.id]: vol }))}

@@ -48,6 +48,8 @@ export interface Clip {
   audio_mode?: string
   hook_offset_sec?: number
   ducking_volume?: number
+  framing_mode?: 'presentation_fit' | 'face_focus' | 'split_screen' | string
+  crop_coords?: string | null
   tags?: string | null
   created_at: string
 }
@@ -117,15 +119,9 @@ export interface VoiceOption {
 
 export const KOKORO_VOICES: VoiceOption[] = [
   { id: 'af_sarah', name: 'Sarah', accent: 'American', gender: 'female', desc: 'Warm & engaging storytelling', tag: 'Warm / Podcast' },
-  { id: 'af_bella', name: 'Bella', accent: 'American', gender: 'female', desc: 'Clear, bright & articulate delivery', tag: 'Clear / Viral' },
-  { id: 'af_nicole', name: 'Nicole', accent: 'American', gender: 'female', desc: 'Relaxed & casual conversational tone', tag: 'Casual / Vlog' },
-  { id: 'af_sky', name: 'Sky', accent: 'American', gender: 'female', desc: 'High-energy, fast-paced narration', tag: 'Energetic' },
-  { id: 'am_adam', name: 'Adam', accent: 'American', gender: 'male', desc: 'Confident, direct professional presenter', tag: 'Presenter' },
+  { id: 'af_bella', name: 'Bella', accent: 'American', gender: 'female', desc: 'Clear, bright & articulate delivery', tag: 'Upbeat / Creator' },
   { id: 'am_michael', name: 'Michael', accent: 'American', gender: 'male', desc: 'Deep, grounded & authoritative tone', tag: 'Deep Voice' },
-  { id: 'bf_emma', name: 'Emma', accent: 'British', gender: 'female', desc: 'Crisp, articulate British narrator', tag: 'British Female' },
-  { id: 'bf_isabella', name: 'Isabella', accent: 'British', gender: 'female', desc: 'Gentle, warm British storytelling', tag: 'British Story' },
-  { id: 'bm_george', name: 'George', accent: 'British', gender: 'male', desc: 'Classic, refined British documentary tone', tag: 'British Narrator' },
-  { id: 'bm_lewis', name: 'Lewis', accent: 'British', gender: 'male', desc: 'Dynamic, modern British presenter', tag: 'British Dynamic' },
+  { id: 'am_adam', name: 'Adam', accent: 'American', gender: 'male', desc: 'Confident, direct professional presenter', tag: 'Presenter' },
 ]
 
 export const VOICE_DISPLAY_NAMES: Record<string, string> = {

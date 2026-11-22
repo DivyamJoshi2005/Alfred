@@ -17,11 +17,14 @@ import {
   ZoomIn,
   Globe,
   Flag,
+  Square,
+  Columns,
+  Scan,
 } from 'lucide-react'
 import type { Clip, SoundProfile, VoiceSample } from '../lib/types'
 import { KOKORO_VOICES, VOICE_DISPLAY_NAMES } from '../lib/types'
 import { formatTime, cn } from '../lib/utils'
-import { getApiBase } from '../lib/api'
+import { getApiBase, settings as settingsApi } from '../lib/api'
 
 interface ClipTimelineEditorProps {
   clip: Clip
@@ -36,12 +39,14 @@ interface ClipTimelineEditorProps {
   startTime: number
   endTime: number
   audioMode: string
+  framingMode?: string
   hookOffsetSec: number
   hookText: string
   duckingVolume?: number
   onStartTimeChange: (time: number) => void
   onEndTimeChange: (time: number) => void
   onAudioModeChange: (mode: string) => void
+  onFramingModeChange?: (mode: string) => void
   onHookOffsetChange: (offset: number) => void
   onHookTextChange: (text: string) => void
   onDuckingVolumeChange?: (volume: number) => void
@@ -76,12 +81,14 @@ export function ClipTimelineEditor({
   startTime,
   endTime,
   audioMode,
+  framingMode = 'presentation_fit',
   hookOffsetSec,
   hookText,
   duckingVolume = 0.15,
   onStartTimeChange,
   onEndTimeChange,
   onAudioModeChange,
+  onFramingModeChange,
   onHookOffsetChange,
   onHookTextChange,
   onDuckingVolumeChange,
@@ -92,6 +99,29 @@ export function ClipTimelineEditor({
   isRerendering,
 }: ClipTimelineEditorProps) {
   const currentDuration = Math.max(0.1, endTime - startTime)
+
+  // Multi-frame Viewport Mode ('landscape' 16:9 | 'portrait' 9:16 Face Focus | 'split' Comparison)
+  const [viewportMode, setViewportMode] = useState<'landscape' | 'portrait' | 'split'>('landscape')
+  const [showFaceViewfinder, setShowFaceViewfinder] = useState(true)
+
+  // Compute average face center from YOLO crop coordinates
+  const avgFaceCenterPct = React.useMemo(() => {
+    if (clip.crop_coords) {
+      try {
+        const coords = typeof clip.crop_coords === 'string' ? JSON.parse(clip.crop_coords) : clip.crop_coords
+        if (Array.isArray(coords) && coords.length > 0) {
+          const valid = coords.filter((c: any) => typeof c.x_center === 'number')
+          if (valid.length > 0) {
+            const sum = valid.reduce((acc: number, c: any) => acc + c.x_center, 0)
+            return Math.max(18, Math.min(82, (sum / valid.length) * 100))
+          }
+        }
+      } catch {
+        // fallback
+      }
+    }
+    return 50
+  }, [clip.crop_coords])
 
   // Sound Profile State
   const [localProfile, setLocalProfile] = useState<SoundProfile>(activeSoundProfile)
@@ -105,6 +135,90 @@ export function ClipTimelineEditor({
     setLocalProfile(activeSoundProfile)
     setProfileTab(activeSoundProfile.cloningEnabled ? 'cloned' : 'presets')
   }, [activeSoundProfile])
+
+  // Instant Voice Audition Player
+  const [auditioningVoice, setAuditioningVoice] = useState<string | null>(null)
+  const auditionAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause()
+        auditionAudioRef.current = null
+      }
+    }
+  }, [])
+
+  const handlePlayVoiceAudition = (voiceId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (auditionAudioRef.current) {
+      auditionAudioRef.current.pause()
+    }
+    if (auditioningVoice === voiceId) {
+      setAuditioningVoice(null)
+      return
+    }
+    setAuditioningVoice(voiceId)
+    const audio = new Audio(settingsApi.getVoicePreviewUrl(voiceId))
+    auditionAudioRef.current = audio
+    audio.play().catch(err => console.warn('Audition playback failed:', err))
+    audio.onended = () => setAuditioningVoice(null)
+    audio.onerror = () => setAuditioningVoice(null)
+  }
+
+  const handlePlayClonedAudition = (sample: VoiceSample, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (auditionAudioRef.current) {
+      auditionAudioRef.current.pause()
+    }
+    if (auditioningVoice === sample.name) {
+      setAuditioningVoice(null)
+      return
+    }
+    if (!sample.path) return
+    setAuditioningVoice(sample.name)
+    const audio = new Audio(`${getApiBase()}/api/media?path=${encodeURIComponent(sample.path)}`)
+    auditionAudioRef.current = audio
+    audio.play().catch(() => {})
+    audio.onended = () => setAuditioningVoice(null)
+    audio.onerror = () => setAuditioningVoice(null)
+  }
+
+  const handleSelectVoicePreset = (voiceId: string) => {
+    const next: SoundProfile = {
+      preset: voiceId,
+      cloningEnabled: false,
+      sampleName: localProfile.sampleName,
+    }
+    setLocalProfile(next)
+    onSoundProfileChange?.(next)
+
+    // 1. Play immediate audition so creator hears the voice sample instantly
+    handlePlayVoiceAudition(voiceId)
+
+    // 2. Automatically synthesize hook audio with this chosen voice so it plays in live preview
+    if (hookText.trim()) {
+      onSynthesizeVoice(next)
+    }
+  }
+
+  const handleSelectClonedVoice = (sample: VoiceSample) => {
+    const next: SoundProfile = {
+      preset: localProfile.preset,
+      cloningEnabled: true,
+      sampleName: sample.name,
+    }
+    setLocalProfile(next)
+    onSoundProfileChange?.(next)
+
+    // 1. Play user sample audition
+    handlePlayClonedAudition(sample)
+
+    // 2. Automatically synthesize hook audio with cloned voice for live preview
+    if (hookText.trim()) {
+      onSynthesizeVoice(next)
+    }
+  }
 
   // Overall video duration (detected from video element metadata or default)
   const [totalVideoDuration, setTotalVideoDuration] = useState<number>(Math.max(endTime + 60, 120))
@@ -124,6 +238,7 @@ export function ClipTimelineEditor({
   const [dragTarget, setDragTarget] = useState<'start' | 'end' | 'hook' | 'playhead' | null>(null)
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const splitVideoRef = useRef<HTMLVideoElement | null>(null)
   const hookAudioRef = useRef<HTMLAudioElement | null>(null)
   const sequencerTrackRef = useRef<HTMLDivElement | null>(null)
 
@@ -184,10 +299,13 @@ export function ClipTimelineEditor({
       if (videoRef.current) {
         if (previewMode === 'rendered') {
           // Rendered video is relative to clip start
-          videoRef.current.currentTime = Math.max(0, Math.min(currentDuration, clamped - startTime))
+          const rel = Math.max(0, Math.min(currentDuration, clamped - startTime))
+          videoRef.current.currentTime = rel
+          if (splitVideoRef.current) splitVideoRef.current.currentTime = rel
         } else {
           // Master source video uses absolute timestamp
           videoRef.current.currentTime = clamped
+          if (splitVideoRef.current) splitVideoRef.current.currentTime = clamped
         }
       }
     },
@@ -214,6 +332,7 @@ export function ClipTimelineEditor({
     if (!videoRef.current) return
     if (isPlaying) {
       videoRef.current.pause()
+      if (splitVideoRef.current) splitVideoRef.current.pause()
       if (hookAudioRef.current) hookAudioRef.current.pause()
       setIsPlaying(false)
       setIsDucked(false)
@@ -225,7 +344,12 @@ export function ClipTimelineEditor({
       }
       videoRef.current
         .play()
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          setIsPlaying(true)
+          if (splitVideoRef.current) {
+            splitVideoRef.current.play().catch(() => {})
+          }
+        })
         .catch((err) => console.warn('Play prevented:', err))
     }
   }
@@ -236,6 +360,11 @@ export function ClipTimelineEditor({
     const vTime = videoRef.current.currentTime
     const absTime = previewMode === 'rendered' ? startTime + vTime : vTime
     setCurrentTime(absTime)
+
+    // Keep split video element in sync
+    if (splitVideoRef.current && Math.abs(splitVideoRef.current.currentTime - vTime) > 0.15) {
+      splitVideoRef.current.currentTime = vTime
+    }
 
     // Clip boundary limit when playing inside clip
     if (absTime >= endTime) {
@@ -443,25 +572,67 @@ export function ClipTimelineEditor({
           </div>
         </div>
 
-        {/* View mode toggle */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        {/* Multi-Frame & View Mode Toggles */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* Format Switcher */}
           <div className="inline-flex rounded-lg bg-stone-800 p-0.5 border border-stone-700/60 text-[11px]">
             <button
               type="button"
               onClick={() => {
                 setPreviewMode('live')
+                setViewportMode('landscape')
                 seekVideo(startTime)
               }}
               className={cn(
                 'px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 cursor-pointer',
-                previewMode === 'live'
+                previewMode === 'live' && viewportMode === 'landscape'
                   ? 'bg-accent text-white shadow-xs font-semibold'
                   : 'text-stone-400 hover:text-white'
               )}
+              title="16:9 Landscape widescreen view with YOLO face safe-zone"
             >
               <MonitorPlay size={12} />
-              Live Edit Preview
+              16:9 Landscape
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPreviewMode('live')
+                setViewportMode('portrait')
+                seekVideo(startTime)
+              }}
+              className={cn(
+                'px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 cursor-pointer',
+                previewMode === 'live' && viewportMode === 'portrait'
+                  ? 'bg-accent text-white shadow-xs font-semibold'
+                  : 'text-stone-400 hover:text-white'
+              )}
+              title="9:16 Portrait phone view centered on YOLO tracked speaker face"
+            >
+              <Smartphone size={12} />
+              9:16 Portrait (Face Focus)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPreviewMode('live')
+                setViewportMode('split')
+                seekVideo(startTime)
+              }}
+              className={cn(
+                'px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 cursor-pointer',
+                previewMode === 'live' && viewportMode === 'split'
+                  ? 'bg-accent text-white shadow-xs font-semibold'
+                  : 'text-stone-400 hover:text-white'
+              )}
+              title="Compare 16:9 widescreen and 9:16 portrait side-by-side"
+            >
+              <Columns size={12} />
+              Split View
+            </button>
+
             {renderedPath && (
               <button
                 type="button"
@@ -472,15 +643,34 @@ export function ClipTimelineEditor({
                 className={cn(
                   'px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 cursor-pointer',
                   previewMode === 'rendered'
-                    ? 'bg-stone-700 text-white shadow-xs font-semibold'
+                    ? 'bg-emerald-600 text-white shadow-xs font-semibold'
                     : 'text-stone-400 hover:text-white'
                 )}
+                title="Watch the final rendered 9:16 export"
               >
-                <Smartphone size={12} />
+                <Check size={12} />
                 Rendered 9:16 Short
               </button>
             )}
           </div>
+
+          {/* YOLO Face Safe-Zone Toggle (when in landscape or split live preview) */}
+          {previewMode === 'live' && viewportMode !== 'portrait' && (
+            <button
+              type="button"
+              onClick={() => setShowFaceViewfinder(!showFaceViewfinder)}
+              className={cn(
+                'px-2 py-1 rounded-md text-[11px] font-medium border transition-colors flex items-center gap-1 cursor-pointer',
+                showFaceViewfinder
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                  : 'bg-stone-800 border-stone-700 text-stone-400 hover:text-stone-200'
+              )}
+              title="Toggle YOLO face tracking safe-zone box overlay"
+            >
+              <Scan size={12} />
+              {showFaceViewfinder ? 'YOLO Box: ON' : 'YOLO Box: OFF'}
+            </button>
+          )}
 
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-stone-800 border border-stone-700 text-[11px] font-mono text-stone-300">
             <Clock size={12} className="text-accent" />
@@ -489,58 +679,297 @@ export function ClipTimelineEditor({
         </div>
       </div>
 
-      {/* Video Viewport Monitor */}
-      <div className="relative rounded-xl overflow-hidden bg-black border border-stone-800 shadow-inner group flex items-center justify-center aspect-video max-h-[310px] mx-auto w-full max-w-3xl">
-        <video
-          ref={videoRef}
-          src={activeVideoSrc}
-          onLoadedMetadata={handleLoadedMetadata}
-          onTimeUpdate={handleTimeUpdate}
-          onEnded={() => {
-            if (!isLooping) setIsPlaying(false)
-          }}
-          playsInline
-          className={cn(
-            'w-full h-full',
-            previewMode === 'rendered' ? 'object-contain' : 'object-cover'
-          )}
-        />
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* VIDEO VIEWPORT MONITORS: Multi-Frame (16:9 / 9:16 / Split)    */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {previewMode === 'rendered' ? (
+        /* Rendered 9:16 Short View */
+        <div className="relative mx-auto rounded-2xl overflow-hidden bg-black border-4 border-emerald-800/80 shadow-2xl group flex items-center justify-center aspect-[9/16] w-full max-w-[280px] sm:max-w-[310px]">
+          <video
+            ref={videoRef}
+            src={activeVideoSrc}
+            onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
+            onEnded={() => {
+              if (!isLooping) setIsPlaying(false)
+            }}
+            playsInline
+            className="w-full h-full object-contain"
+          />
 
-        {/* Live Audio Ducking Badge */}
-        {isDucked && (
-          <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-md bg-rose-600/90 text-white text-[11px] font-bold tracking-wide backdrop-blur-md flex items-center gap-1.5 shadow-md animate-pulse">
-            <Mic size={12} />
-            Hook Speaking • Original Sound Ducked (15%)
+          <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-emerald-600/90 text-white text-[10px] font-mono font-semibold backdrop-blur-md flex items-center gap-1 shadow-md">
+            <Check size={11} />
+            Rendered 9:16 Short
           </div>
-        )}
 
-        {/* Audio Mode Badge */}
-        <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-black/70 text-stone-300 text-[10px] font-mono backdrop-blur-xs border border-white/10">
-          {audioMode === 'original'
-            ? 'Original Sound Only (Zero Voiceover)'
-            : audioMode === 'intro_hook'
-            ? 'Hook at Start (0:00)'
-            : `Hook @ +${hookOffsetSec.toFixed(1)}s`}
+          {!isPlaying && (
+            <button
+              type="button"
+              onClick={handleTogglePlay}
+              className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-accent/90 hover:bg-accent text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg cursor-pointer"
+              title="Play preview"
+            >
+              <Play size={20} className="fill-white ml-0.5" />
+            </button>
+          )}
+
+          <div className="absolute bottom-2 inset-x-2 px-2.5 py-1 rounded bg-black/70 backdrop-blur-xs flex items-center justify-between text-[10px] text-stone-300 font-mono">
+            <span>0:00 - {formatTime(currentDuration)}</span>
+            <span className="text-emerald-400 font-semibold">{currentDuration.toFixed(1)}s Export</span>
+          </div>
         </div>
+      ) : viewportMode === 'portrait' ? (
+        /* Live 9:16 Portrait Phone Mockup (Face Focused) */
+        <div className="relative mx-auto rounded-2xl overflow-hidden bg-black border-4 border-stone-800 shadow-2xl group flex items-center justify-center aspect-[9/16] w-full max-w-[280px] sm:max-w-[310px]">
+          <video
+            ref={videoRef}
+            src={activeVideoSrc}
+            onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
+            onEnded={() => {
+              if (!isLooping) setIsPlaying(false)
+            }}
+            playsInline
+            className="w-full h-full object-cover"
+            style={{
+              objectPosition: `${avgFaceCenterPct}% center`,
+            }}
+          />
 
-        {/* Center play icon when paused */}
-        {!isPlaying && (
-          <button
-            type="button"
-            onClick={handleTogglePlay}
-            className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-accent/90 hover:bg-accent text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg cursor-pointer"
-            title="Play preview"
-          >
-            <Play size={20} className="fill-white ml-0.5" />
-          </button>
-        )}
+          {/* YOLO Face Focus Pill */}
+          <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-emerald-600/90 text-white text-[10px] font-mono font-semibold backdrop-blur-md flex items-center gap-1 shadow-md">
+            <Smartphone size={10} />
+            YOLO Face Focus ({Math.round(avgFaceCenterPct)}%)
+          </div>
 
-        {/* Bottom HUD */}
-        <div className="absolute bottom-2 inset-x-2 px-3 py-1 rounded bg-black/65 backdrop-blur-xs flex items-center justify-between text-[11px] text-stone-300 font-mono">
-          <span>Clip: {formatTime(startTime)} → {formatTime(endTime)}</span>
-          <span className="text-accent font-semibold">{currentDuration.toFixed(1)}s Length</span>
+          {/* Live Audio Ducking Badge */}
+          {isDucked && (
+            <div className="absolute top-9 left-2.5 px-2 py-0.5 rounded-md bg-rose-600/90 text-white text-[10px] font-bold tracking-wide backdrop-blur-md flex items-center gap-1 shadow-md animate-pulse">
+              <Mic size={10} />
+              Ducked (15%)
+            </div>
+          )}
+
+          {/* Audio Mode Badge */}
+          <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-black/70 text-stone-300 text-[9px] font-mono backdrop-blur-xs border border-white/10">
+            {audioMode === 'original' ? 'Original Sound' : 'Voiceover'}
+          </div>
+
+          {/* Center play icon when paused */}
+          {!isPlaying && (
+            <button
+              type="button"
+              onClick={handleTogglePlay}
+              className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-accent/90 hover:bg-accent text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg cursor-pointer"
+              title="Play preview"
+            >
+              <Play size={20} className="fill-white ml-0.5" />
+            </button>
+          )}
+
+          {/* Bottom HUD */}
+          <div className="absolute bottom-2 inset-x-2 px-2.5 py-1 rounded bg-black/70 backdrop-blur-xs flex items-center justify-between text-[10px] text-stone-300 font-mono">
+            <span>{formatTime(startTime)} - {formatTime(endTime)}</span>
+            <span className="text-accent font-semibold">{currentDuration.toFixed(1)}s</span>
+          </div>
         </div>
-      </div>
+      ) : viewportMode === 'split' ? (
+        /* Live Split View: 16:9 Left + 9:16 Right */
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mx-auto w-full max-w-4xl items-center">
+          {/* Left: 16:9 Master Landscape View */}
+          <div className="md:col-span-7 relative rounded-xl overflow-hidden bg-black border border-stone-800 shadow-inner group flex items-center justify-center aspect-video max-h-[300px]">
+            <video
+              ref={videoRef}
+              src={activeVideoSrc}
+              onLoadedMetadata={handleLoadedMetadata}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={() => {
+                if (!isLooping) setIsPlaying(false)
+              }}
+              playsInline
+              className="w-full h-full object-contain"
+            />
+
+            {/* YOLO Viewfinder Box Overlay */}
+            {showFaceViewfinder && (
+              <div className="absolute inset-0 pointer-events-none">
+                <div
+                  className="absolute top-0 bottom-0 left-0 bg-black/50"
+                  style={{ width: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82))}%` }}
+                />
+                <div
+                  className="absolute top-0 bottom-0 border-2 border-emerald-400 flex flex-col justify-between p-1.5 shadow-[0_0_12px_rgba(52,211,153,0.3)]"
+                  style={{
+                    left: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82))}%`,
+                    width: '31.64%',
+                  }}
+                >
+                  <div className="text-[9px] font-mono font-bold text-emerald-300 bg-black/80 px-1 rounded border border-emerald-500/40 w-fit">
+                    9:16 Crop
+                  </div>
+                </div>
+                <div
+                  className="absolute top-0 bottom-0 right-0 bg-black/50"
+                  style={{
+                    left: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82)) + 31.64}%`,
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/75 text-stone-300 text-[10px] font-mono border border-white/10 flex items-center gap-1">
+              <MonitorPlay size={10} className="text-accent" />
+              16:9 Landscape Master
+            </div>
+
+            {!isPlaying && (
+              <button
+                type="button"
+                onClick={handleTogglePlay}
+                className="absolute inset-0 m-auto w-11 h-11 rounded-full bg-accent/90 hover:bg-accent text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg cursor-pointer"
+                title="Play preview"
+              >
+                <Play size={18} className="fill-white ml-0.5" />
+              </button>
+            )}
+
+            <div className="absolute bottom-2 inset-x-2 px-2.5 py-0.5 rounded bg-black/65 backdrop-blur-xs flex items-center justify-between text-[10px] text-stone-300 font-mono">
+              <span>{formatTime(currentTime)}</span>
+              <span className="text-accent">{currentDuration.toFixed(1)}s</span>
+            </div>
+          </div>
+
+          {/* Right: 9:16 Portrait Face Focus */}
+          <div className="md:col-span-5 relative rounded-2xl overflow-hidden bg-black border-2 border-stone-700 shadow-xl group flex items-center justify-center aspect-[9/16] max-h-[300px] w-full max-w-[190px] mx-auto">
+            <video
+              ref={splitVideoRef}
+              src={activeVideoSrc}
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+              style={{
+                objectPosition: `${avgFaceCenterPct}% center`,
+              }}
+            />
+
+            <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/80 text-emerald-300 text-[10px] font-mono border border-emerald-500/30 flex items-center gap-1">
+              <Smartphone size={10} />
+              9:16 Face Focus ({Math.round(avgFaceCenterPct)}%)
+            </div>
+
+            {isDucked && (
+              <div className="absolute top-8 left-2 px-2 py-0.5 rounded bg-rose-600/90 text-white text-[9px] font-bold shadow animate-pulse">
+                Ducked
+              </div>
+            )}
+
+            <div className="absolute bottom-2 inset-x-2 px-2 py-0.5 rounded bg-black/65 text-center text-[10px] text-stone-300 font-mono">
+              YOLO Auto-Centered
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Live 16:9 Landscape Viewport with YOLO Safe-Zone Overlay */
+        <div className="relative rounded-xl overflow-hidden bg-black border border-stone-800 shadow-inner group flex items-center justify-center aspect-video max-h-[340px] mx-auto w-full max-w-3xl">
+          <video
+            ref={videoRef}
+            src={activeVideoSrc}
+            onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
+            onEnded={() => {
+              if (!isLooping) setIsPlaying(false)
+            }}
+            playsInline
+            className="w-full h-full object-contain"
+          />
+
+          {/* YOLO Face-Tracked Crop Box Safe-Zone Overlay */}
+          {showFaceViewfinder && (
+            <div className="absolute inset-0 pointer-events-none">
+              {/* Left Dimming Mask */}
+              <div
+                className="absolute top-0 bottom-0 left-0 bg-black/55 backdrop-blur-[0.5px] transition-all duration-150"
+                style={{ width: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82))}%` }}
+              />
+              {/* The 9:16 Viewfinder Window */}
+              <div
+                className="absolute top-0 bottom-0 border-2 border-emerald-400 bg-transparent shadow-[0_0_20px_rgba(52,211,153,0.35)] transition-all duration-150 flex flex-col justify-between p-2"
+                style={{
+                  left: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82))}%`,
+                  width: '31.64%',
+                }}
+              >
+                {/* Top Label Inside Box */}
+                <div className="flex items-center justify-between text-[9px] font-mono font-bold text-emerald-300 bg-black/75 px-1.5 py-0.5 rounded border border-emerald-500/50 backdrop-blur-xs">
+                  <span className="flex items-center gap-1">
+                    <Scan size={10} className="text-emerald-400" />
+                    9:16 Portrait Cut
+                  </span>
+                  <span>{Math.round(avgFaceCenterPct)}%</span>
+                </div>
+
+                {/* Center Crosshair Target */}
+                <div className="self-center w-5 h-5 border border-dashed border-emerald-400/60 rounded-full flex items-center justify-center opacity-60">
+                  <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+                </div>
+
+                {/* Bottom Label Inside Box */}
+                <div className="text-[8px] font-mono text-center text-emerald-200/80 bg-black/60 rounded py-0.5">
+                  Face Tracked Safe Zone
+                </div>
+              </div>
+              {/* Right Dimming Mask */}
+              <div
+                className="absolute top-0 bottom-0 right-0 bg-black/55 backdrop-blur-[0.5px] transition-all duration-150"
+                style={{
+                  left: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82)) + 31.64}%`,
+                }}
+              />
+            </div>
+          )}
+
+          {/* 16:9 Landscape Badge */}
+          <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-black/70 text-stone-300 text-[10px] font-mono border border-white/10 flex items-center gap-1">
+            <MonitorPlay size={11} className="text-accent" />
+            16:9 Master Landscape
+          </div>
+
+          {/* Live Audio Ducking Badge */}
+          {isDucked && (
+            <div className="absolute top-9 left-2.5 px-2.5 py-1 rounded-md bg-rose-600/90 text-white text-[11px] font-bold tracking-wide backdrop-blur-md flex items-center gap-1.5 shadow-md animate-pulse">
+              <Mic size={12} />
+              Hook Speaking • Original Sound Ducked
+            </div>
+          )}
+
+          {/* Audio Mode Badge */}
+          <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-black/70 text-stone-300 text-[10px] font-mono backdrop-blur-xs border border-white/10">
+            {audioMode === 'original'
+              ? 'Original Sound Only (Zero Voiceover)'
+              : audioMode === 'intro_hook'
+              ? 'Hook at Start (0:00)'
+              : `Hook @ +${hookOffsetSec.toFixed(1)}s`}
+          </div>
+
+          {/* Center play icon when paused */}
+          {!isPlaying && (
+            <button
+              type="button"
+              onClick={handleTogglePlay}
+              className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-accent/90 hover:bg-accent text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg cursor-pointer"
+              title="Play preview"
+            >
+              <Play size={20} className="fill-white ml-0.5" />
+            </button>
+          )}
+
+          {/* Bottom HUD */}
+          <div className="absolute bottom-2 inset-x-2 px-3 py-1 rounded bg-black/65 backdrop-blur-xs flex items-center justify-between text-[11px] text-stone-300 font-mono">
+            <span>Clip: {formatTime(startTime)} → {formatTime(endTime)}</span>
+            <span className="text-accent font-semibold">{currentDuration.toFixed(1)}s Length</span>
+          </div>
+        </div>
+      )}
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* LIVE VIDEO SCRUBBER BAR: Move ANYWHERE across the video!     */}
@@ -927,6 +1356,112 @@ export function ClipTimelineEditor({
       </div>
 
       {/* ───────────────────────────────────────────────────────────── */}
+      {/* VIDEO FRAMING & PRESENTATION (9:16 Portrait vs 16:9 Fit)     */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400">
+            Video Framing & Crop Mode (9:16 Shorts)
+          </label>
+          <span className="text-[11px] text-stone-400">
+            Choose how Alfred crops and formats this clip when re-rendering
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {/* Card 1: Face Focus (9:16 Portrait) */}
+          <div
+            onClick={() => {
+              onFramingModeChange?.('face_focus')
+              setViewportMode('portrait')
+            }}
+            className={cn(
+              'p-3.5 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between gap-2',
+              (framingMode || 'presentation_fit') === 'face_focus'
+                ? 'border-accent bg-accent/20 ring-1 ring-accent'
+                : 'border-stone-800 bg-stone-850 hover:border-stone-700'
+            )}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
+                  <Smartphone size={14} className={(framingMode || 'presentation_fit') === 'face_focus' ? 'text-accent' : 'text-stone-400'} />
+                  Face & Speaker Focus
+                </div>
+                {(framingMode || 'presentation_fit') === 'face_focus' && <Check size={14} className="text-accent" />}
+              </div>
+              <p className="text-[11px] text-stone-400 leading-relaxed">
+                YOLO AI tracks the speaker's face and crops cleanly into full 9:16 portrait.
+              </p>
+            </div>
+            <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 text-[10px] font-medium w-fit">
+              ★ Podcasts, Talks & Vlogs
+            </span>
+          </div>
+
+          {/* Card 2: Presentation Fit (Full 16:9 + Blurred BG) */}
+          <div
+            onClick={() => {
+              onFramingModeChange?.('presentation_fit')
+              setViewportMode('landscape')
+            }}
+            className={cn(
+              'p-3.5 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between gap-2',
+              (framingMode || 'presentation_fit') === 'presentation_fit'
+                ? 'border-accent bg-accent/20 ring-1 ring-accent'
+                : 'border-stone-800 bg-stone-850 hover:border-stone-700'
+            )}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
+                  <MonitorPlay size={14} className={(framingMode || 'presentation_fit') === 'presentation_fit' ? 'text-accent' : 'text-stone-400'} />
+                  Presentation Fit (16:9)
+                </div>
+                {(framingMode || 'presentation_fit') === 'presentation_fit' && <Check size={14} className="text-accent" />}
+              </div>
+              <p className="text-[11px] text-stone-400 leading-relaxed">
+                Keeps complete 16:9 widescreen presentation in center with blurred video backdrop.
+              </p>
+            </div>
+            <span className="inline-block px-1.5 py-0.5 rounded bg-sky-950/70 text-sky-300 border border-sky-800/60 text-[10px] font-medium w-fit">
+              Slides, Code & Screen Demos
+            </span>
+          </div>
+
+          {/* Card 3: Split Screen (2-Tier Stack) */}
+          <div
+            onClick={() => {
+              onFramingModeChange?.('split_screen')
+              setViewportMode('split')
+            }}
+            className={cn(
+              'p-3.5 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between gap-2',
+              (framingMode || 'presentation_fit') === 'split_screen'
+                ? 'border-accent bg-accent/20 ring-1 ring-accent'
+                : 'border-stone-800 bg-stone-850 hover:border-stone-700'
+            )}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
+                  <Columns size={14} className={(framingMode || 'presentation_fit') === 'split_screen' ? 'text-accent' : 'text-stone-400'} />
+                  Two-Tier Split Screen
+                </div>
+                {(framingMode || 'presentation_fit') === 'split_screen' && <Check size={14} className="text-accent" />}
+              </div>
+              <p className="text-[11px] text-stone-400 leading-relaxed">
+                Stacked layout: Speaker face in top frame and presentation or demo in bottom frame.
+              </p>
+            </div>
+            <span className="inline-block px-1.5 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-800/60 text-[10px] font-medium w-fit">
+              Tutorials & Gaming
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ───────────────────────────────────────────────────────────── */}
       {/* AUDIO TRACK OPTIONS (Clean, simple creator language)          */}
       {/* ───────────────────────────────────────────────────────────── */}
       <div className="space-y-2">
@@ -1229,41 +1764,66 @@ export function ClipTimelineEditor({
             {/* Tab: AI Voice Presets */}
             {profileTab === 'presets' && !localProfile.cloningEnabled && (
               <div className="space-y-2">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 max-h-56 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   {KOKORO_VOICES.map((v) => {
                     const isSelected = localProfile.preset === v.id && !localProfile.cloningEnabled
+                    const isAuditioning = auditioningVoice === v.id
                     return (
-                      <button
+                      <div
                         key={v.id}
-                        type="button"
-                        onClick={() => {
-                          const next: SoundProfile = {
-                            preset: v.id,
-                            cloningEnabled: false,
-                            sampleName: localProfile.sampleName,
-                          }
-                          setLocalProfile(next)
-                          onSoundProfileChange?.(next)
-                        }}
+                        onClick={() => handleSelectVoicePreset(v.id)}
                         className={cn(
-                          'p-2 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between',
+                          'p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-2.5',
                           isSelected
-                            ? 'border-accent bg-accent/20 ring-1 ring-accent'
-                            : 'border-stone-800 bg-stone-900/90 hover:border-stone-700 hover:bg-stone-800'
+                            ? 'border-accent bg-accent/20 ring-1 ring-accent shadow-sm'
+                            : 'border-stone-800 bg-stone-900/90 hover:border-stone-700 hover:bg-stone-800/80'
                         )}
                       >
-                        <div className="flex items-center justify-between w-full">
-                          <span className={cn('font-semibold text-xs truncate', isSelected ? 'text-accent' : 'text-stone-200')}>
-                            {v.name}
-                          </span>
-                          {isSelected && <Check size={12} className="text-accent shrink-0" />}
+                        <div>
+                          <div className="flex items-center justify-between w-full mb-1">
+                            <span className={cn('font-semibold text-xs', isSelected ? 'text-accent' : 'text-stone-200')}>
+                              {v.name}
+                            </span>
+                            {isSelected ? (
+                              <span className="flex items-center gap-1 text-[10px] text-accent font-semibold bg-accent/20 px-1.5 py-0.5 rounded-full border border-accent/30">
+                                <Check size={10} /> Active
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-stone-500 font-medium">{v.gender === 'female' ? '♀ Female' : '♂ Male'}</span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-stone-400 leading-snug line-clamp-2">
+                            {v.desc}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-1 mt-1 text-[10px] text-stone-400">
-                          <span>{v.accent === 'American' ? 'US' : 'UK'}</span>
-                          <span>{v.gender === 'female' ? '♀' : '♂'}</span>
-                          <span className="text-stone-500 truncate">• {v.tag.split('/')[0].trim()}</span>
+
+                        <div className="pt-2 border-t border-stone-800/60 flex items-center justify-between">
+                          <span className="text-[10px] text-stone-500 font-medium">{v.tag}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => handlePlayVoiceAudition(v.id, e)}
+                            className={cn(
+                              'inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer border',
+                              isAuditioning
+                                ? 'bg-accent text-white border-accent animate-pulse'
+                                : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border-stone-700'
+                            )}
+                            title="Hear a live voice sample"
+                          >
+                            {isAuditioning ? (
+                              <>
+                                <Square size={9} className="fill-white" />
+                                <span>Stop</span>
+                              </>
+                            ) : (
+                              <>
+                                <Play size={9} className="fill-current" />
+                                <span>Listen</span>
+                              </>
+                            )}
+                          </button>
                         </div>
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
@@ -1274,31 +1834,23 @@ export function ClipTimelineEditor({
             {(profileTab === 'cloned' || localProfile.cloningEnabled) && (
               <div className="space-y-2">
                 {availableVoiceSamples.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {availableVoiceSamples.map((s) => {
                       const isSelected = localProfile.cloningEnabled && localProfile.sampleName === s.name
+                      const isAuditioning = auditioningVoice === s.name
                       return (
-                        <button
+                        <div
                           key={s.name}
-                          type="button"
-                          onClick={() => {
-                            const next: SoundProfile = {
-                              preset: localProfile.preset,
-                              cloningEnabled: true,
-                              sampleName: s.name,
-                            }
-                            setLocalProfile(next)
-                            onSoundProfileChange?.(next)
-                          }}
+                          onClick={() => handleSelectClonedVoice(s)}
                           className={cn(
-                            'p-2.5 rounded-lg border text-left transition-all cursor-pointer flex items-center justify-between',
+                            'p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between',
                             isSelected
                               ? 'border-accent bg-accent/20 ring-1 ring-accent'
                               : 'border-stone-800 bg-stone-900/90 hover:border-stone-700'
                           )}
                         >
-                          <div className="flex items-center gap-2">
-                            <Mic size={13} className={isSelected ? 'text-accent' : 'text-stone-400'} />
+                          <div className="flex items-center gap-2.5">
+                            <Mic size={14} className={isSelected ? 'text-accent' : 'text-stone-400'} />
                             <div>
                               <p className="text-xs font-semibold text-stone-200">{s.name}</p>
                               <p className="text-[10px] text-stone-400">
@@ -1306,8 +1858,25 @@ export function ClipTimelineEditor({
                               </p>
                             </div>
                           </div>
-                          {isSelected && <Check size={14} className="text-accent shrink-0" />}
-                        </button>
+                          <div className="flex items-center gap-2">
+                            {s.path && (
+                              <button
+                                type="button"
+                                onClick={(e) => handlePlayClonedAudition(s, e)}
+                                className={cn(
+                                  'inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer border',
+                                  isAuditioning
+                                    ? 'bg-accent text-white border-accent animate-pulse'
+                                    : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border-stone-700'
+                                )}
+                              >
+                                {isAuditioning ? <Square size={9} className="fill-white" /> : <Play size={9} className="fill-current" />}
+                                <span>{isAuditioning ? 'Stop' : 'Listen'}</span>
+                              </button>
+                            )}
+                            {isSelected && <Check size={14} className="text-accent shrink-0" />}
+                          </div>
+                        </div>
                       )
                     })}
                   </div>

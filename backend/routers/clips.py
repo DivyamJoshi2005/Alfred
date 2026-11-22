@@ -21,6 +21,8 @@ def _row_to_clip_response(row) -> ClipResponse:
         audio_mode=row["audio_mode"] if "audio_mode" in keys and row["audio_mode"] else "original",
         hook_offset_sec=float(row["hook_offset_sec"]) if "hook_offset_sec" in keys and row["hook_offset_sec"] is not None else 0.0,
         ducking_volume=float(row["ducking_volume"]) if "ducking_volume" in keys and row["ducking_volume"] is not None else 0.15,
+        framing_mode=row["framing_mode"] if "framing_mode" in keys and row["framing_mode"] else "presentation_fit",
+        crop_coords=row["crop_coords"] if "crop_coords" in keys else None,
         tags=row["tags"] if "tags" in keys else None,
         output_path=row["output_path"],
         status=row["status"],
@@ -87,6 +89,10 @@ async def update_clip(clip_id: str, body: ClipUpdate):
         if body.audio_mode is not None:
             updates.append("audio_mode = ?")
             params.append(body.audio_mode)
+
+        if body.framing_mode is not None:
+            updates.append("framing_mode = ?")
+            params.append(body.framing_mode)
 
         if body.hook_offset_sec is not None:
             updates.append("hook_offset_sec = ?")
@@ -240,13 +246,32 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
         )
         ducking_volume = max(0.0, min(1.0, float(ducking_volume)))
 
+        # Resolve smart crop coordinates for face_focus or split_screen
+        crop_coords = None
+        if "crop_coords" in clip.keys() and clip["crop_coords"]:
+            try:
+                import json
+                crop_coords = json.loads(clip["crop_coords"])
+            except Exception:
+                pass
+
+        if not crop_coords and framing_mode in ("face_focus", "split_screen"):
+            try:
+                from pipeline.smart_crop import detect_faces_for_segments
+                segs = [{"start_time": start_time, "end_time": end_time}]
+                detected = await detect_faces_for_segments(video_path, segs, job["id"])
+                if detected and detected[0].get("crop_coords"):
+                    crop_coords = detected[0]["crop_coords"]
+            except Exception as fe:
+                print(f"[Rerender] Smart crop face detection notice: {fe}")
+
         from pipeline.assembler import render_single_clip
         await render_single_clip(
             video_path=video_path,
             start_time=start_time,
             end_time=end_time,
             output_path=output_path,
-            crop_coords=None,
+            crop_coords=crop_coords,
             hook_audio_path=hook_audio_path,
             hook_text=hook_text if audio_mode != "original" else None,
             framing_mode=framing_mode,
@@ -255,9 +280,12 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
             ducking_volume=ducking_volume,
         )
 
+        import json
+        crop_coords_str = json.dumps(crop_coords) if crop_coords else (clip["crop_coords"] if "crop_coords" in clip.keys() else None)
+
         await db.execute(
             """UPDATE clips
-               SET start_time = ?, end_time = ?, duration = ?, hook_text = ?, hook_audio_path = ?, audio_mode = ?, hook_offset_sec = ?, ducking_volume = ?, output_path = ?, status = 'rendered'
+               SET start_time = ?, end_time = ?, duration = ?, hook_text = ?, hook_audio_path = ?, audio_mode = ?, hook_offset_sec = ?, ducking_volume = ?, framing_mode = ?, crop_coords = ?, output_path = ?, status = 'rendered'
                WHERE id = ?""",
             (
                 start_time,
@@ -268,6 +296,8 @@ async def rerender_clip(clip_id: str, body: ClipRerenderRequest):
                 audio_mode,
                 hook_offset_sec,
                 ducking_volume,
+                framing_mode,
+                crop_coords_str,
                 str(output_path),
                 clip_id,
             ),
