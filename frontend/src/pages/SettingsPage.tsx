@@ -17,8 +17,11 @@ import {
   RotateCcw,
   Sparkles,
   Volume2,
-  Play
+  Play,
+  ShieldAlert,
+  HelpCircle
 } from 'lucide-react'
+import { Modal } from '../components/Modal'
 import { settings as settingsApi, accounts as accountsApi } from '../lib/api'
 import type { SocialAccount, ModelStatus, VoiceSample } from '../lib/types'
 import { KOKORO_VOICES, VOICE_DISPLAY_NAMES } from '../lib/types'
@@ -96,9 +99,33 @@ export function SettingsPage() {
   const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null)
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null)
   const [selectedPromptIndex, setSelectedPromptIndex] = useState(0)
+  const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
+  const [micErrorMessage, setMicErrorMessage] = useState<string>('')
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false)
+  const [micPermissionState, setMicPermissionState] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown')
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Listen to browser microphone permission state
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      try {
+        navigator.permissions.query({ name: 'microphone' as PermissionName })
+          .then((status) => {
+            setMicPermissionState(status.state)
+            status.onchange = () => {
+              setMicPermissionState(status.state)
+            }
+          })
+          .catch(() => {
+            // Not supported in some environments (e.g. Safari / WebKit)
+          })
+      } catch {
+        // ignore
+      }
+    }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -108,8 +135,21 @@ export function SettingsPage() {
   }, [recordedAudioUrl])
 
   const startRecording = async () => {
+    // Check if mediaDevices is supported in current context (e.g. localhost or HTTPS)
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setMicErrorMessage('Microphone access is not supported or not available in this context. Ensure you are accessing Alfred via http://localhost:5173 or HTTPS.')
+      setShowMicPermissionModal(true)
+      return
+    }
+
     try {
+      setIsRequestingPermission(true)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      setIsRequestingPermission(false)
+      setShowMicPermissionModal(false)
+      setMicErrorMessage('')
+      setMicPermissionState('granted')
+
       audioChunksRef.current = []
 
       let mimeType = 'audio/webm'
@@ -159,7 +199,11 @@ export function SettingsPage() {
         setRecordingSeconds(s => s + 1)
       }, 1000)
     } catch (err: unknown) {
-      alert(err instanceof Error ? `Microphone access error: ${err.message}` : 'Please allow microphone access in your browser to record.')
+      setIsRequestingPermission(false)
+      const errMsg = err instanceof Error ? err.message : String(err)
+      setMicErrorMessage(errMsg)
+      setMicPermissionState('denied')
+      setShowMicPermissionModal(true)
     }
   }
 
@@ -821,14 +865,41 @@ export function SettingsPage() {
                     />
 
                     {!isRecording && !recordedAudioUrl && (
-                      <button
-                        type="button"
-                        onClick={startRecording}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors shadow-xs cursor-pointer"
-                      >
-                        <Radio size={14} className="animate-pulse" />
-                        Start Recording
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={startRecording}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors shadow-xs cursor-pointer"
+                        >
+                          <Radio size={14} className="animate-pulse" />
+                          Start Recording
+                        </button>
+
+                        {micPermissionState === 'denied' && (
+                          <button
+                            type="button"
+                            onClick={() => setShowMicPermissionModal(true)}
+                            className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                            title="Microphone permission is blocked"
+                          >
+                            <AlertCircle size={13} className="text-amber-600" />
+                            <span>Mic Blocked (Fix)</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMicErrorMessage('')
+                            setShowMicPermissionModal(true)
+                          }}
+                          className="text-[11px] text-text-muted hover:text-accent flex items-center gap-1 cursor-pointer transition-colors ml-1"
+                          title="Microphone permission instructions"
+                        >
+                          <HelpCircle size={12} />
+                          <span>Mic Permission</span>
+                        </button>
+                      </div>
                     )}
 
                     {isRecording && (
@@ -1087,6 +1158,100 @@ export function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Microphone Permission Modal */}
+      <Modal
+        isOpen={showMicPermissionModal}
+        onClose={() => setShowMicPermissionModal(false)}
+        title="Microphone Permission Required"
+        maxWidth="md"
+      >
+        <div className="space-y-4 text-xs text-text">
+          {/* Header alert */}
+          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-3">
+            <ShieldAlert size={20} className="text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-rose-900 text-xs">
+                Microphone Access Blocked
+              </p>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                Alfred needs access to your microphone to record your voice sample and generate your AI voice profile. Your browser or system is currently denying access.
+              </p>
+              {micErrorMessage && (
+                <p className="font-mono text-[10px] text-rose-800 bg-rose-100/70 px-2 py-0.5 rounded border border-rose-200/80 w-fit mt-1">
+                  Browser error: {micErrorMessage}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Step-by-Step Fix Guide */}
+          <div className="space-y-2.5 p-3.5 rounded-xl bg-stone-50 border border-stone-200">
+            <span className="font-semibold text-stone-900 text-xs block">
+              How to enable microphone access in your browser:
+            </span>
+            <ol className="space-y-2 text-[11px] text-stone-700 list-decimal list-inside pl-1">
+              <li className="leading-relaxed">
+                <span className="font-medium text-stone-900">Click the address bar icon:</span> Look at the top of your browser next to the URL (<span className="font-mono bg-stone-200 px-1 py-0.5 rounded text-[10px]">{typeof window !== 'undefined' ? window.location.host : 'localhost'}</span>) and click the <strong>lock 🔒</strong>, <strong>tune 🎛️</strong>, or <strong>permission settings</strong> icon.
+              </li>
+              <li className="leading-relaxed">
+                <span className="font-medium text-stone-900">Switch to "Allow":</span> Find <strong>Microphone</strong> and change it from <em>Block</em> to <strong>Allow</strong> (or click "Reset permission").
+              </li>
+              <li className="leading-relaxed">
+                <span className="font-medium text-stone-900">Click Try Again:</span> Click the button below to re-request microphone access and begin recording.
+              </li>
+            </ol>
+            <p className="text-[10px] text-stone-500 pt-1.5 border-t border-stone-200/80">
+              💡 <em>Linux / Desktop tip:</em> Make sure your microphone is not muted in PulseAudio / PipeWire sound settings.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-border">
+            <button
+              type="button"
+              onClick={() => {
+                setShowMicPermissionModal(false)
+                setVoiceInputMode('upload')
+              }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-stone-700 hover:bg-stone-100 rounded-lg border border-border transition-colors cursor-pointer"
+            >
+              <Upload size={13} />
+              Upload Audio File Instead
+            </button>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                type="button"
+                onClick={() => setShowMicPermissionModal(false)}
+                className="px-3 py-2 text-xs font-medium text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  startRecording()
+                }}
+                disabled={isRequestingPermission}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-text hover:bg-accent-hover transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {isRequestingPermission ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" />
+                    Requesting Access...
+                  </>
+                ) : (
+                  <>
+                    <Mic size={13} />
+                    Try Again & Request Mic
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
