@@ -86,7 +86,7 @@ def create_app(port: int = SERVER_PORT) -> FastAPI:
         # Security: restrict to media file extensions (video, audio, and storyboard frames)
         allowed_extensions = {
             ".mp4", ".mov", ".avi", ".mkv", ".webm",
-            ".wav", ".mp3", ".m4a",
+            ".wav", ".mp3", ".m4a", ".ogg",
             ".jpg", ".jpeg", ".png", ".webp"
         }
         if file_path.suffix.lower() not in allowed_extensions:

@@ -350,19 +350,39 @@ async def synthesize_clip_voice(clip_id: str, body: ClipSynthesizeRequest):
 
         # Apply voice cloning if requested or enabled in settings
         if use_cloned:
-            from pipeline.voice_cloner import VoiceCloner
-            cloner = VoiceCloner()
-            samples = cloner.list_voice_samples()
-            valid_samples = [s for s in samples if s.get("has_embedding")]
-            if valid_samples:
-                ref = valid_samples[0]
-                if sample_name:
-                    named = [s for s in valid_samples if s["name"] == sample_name]
-                    if named:
-                        ref = named[0]
-                cloned_wav = clips_dir / f"hook_{clip['rank']}_cloned.wav"
-                cloner.clone_voice(out_wav, Path(ref["embedding_path"]), cloned_wav)
-                out_wav = cloned_wav
+            try:
+                from pipeline.voice_cloner import VoiceCloner
+                cloner = VoiceCloner()
+                samples = cloner.list_voice_samples()
+                valid_samples = [s for s in samples if s.get("has_embedding")]
+                if not valid_samples and samples:
+                    for s in samples:
+                        try:
+                            emb = cloner.extract_speaker_embedding(Path(s["audio_path"]), sample_name=s["name"])
+                            s["has_embedding"] = True
+                            s["embedding_path"] = str(emb)
+                            valid_samples.append(s)
+                        except Exception as ex:
+                            print(f"[Synthesize] Could not extract embedding for {s['name']}: {ex}")
+
+                if valid_samples:
+                    ref = valid_samples[0]
+                    if sample_name:
+                        clean_sname = "".join(c for c in sample_name if c.isalnum() or c in ("-", "_")).lower()
+                        named = [
+                            s for s in valid_samples 
+                            if s["name"] == sample_name 
+                            or s["name"].lower() == clean_sname 
+                            or clean_sname in s["name"].lower()
+                        ]
+                        if named:
+                            ref = named[0]
+                    cloned_wav = clips_dir / f"hook_{clip['rank']}_cloned.wav"
+                    cloner.clone_voice(out_wav, Path(ref["embedding_path"]), cloned_wav)
+                    if cloned_wav.exists() and cloned_wav.stat().st_size > 500:
+                        out_wav = cloned_wav
+            except Exception as e:
+                print(f"[Synthesize] Cloned voice generation notice: {e}")
 
         await db.execute(
             "UPDATE clips SET hook_audio_path = ?, hook_text = ? WHERE id = ?",

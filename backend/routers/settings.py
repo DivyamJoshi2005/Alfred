@@ -104,7 +104,8 @@ async def upload_voice_sample(file: UploadFile = File(...), sample_name: str = "
         raise HTTPException(status_code=400, detail="Only audio files (.wav, .mp3, .m4a, .ogg, .webm) are supported")
 
     clean_name = "".join(c for c in sample_name if c.isalnum() or c in ("-", "_")).strip() or "voice_sample"
-    temp_target = VOICE_SAMPLES_DIR / f"temp_{clean_name}_{file.filename}"
+    voice_cloner.samples_dir.mkdir(parents=True, exist_ok=True)
+    temp_target = voice_cloner.samples_dir / f"temp_{clean_name}_{file.filename}"
 
     try:
         with open(temp_target, "wb") as f:
@@ -124,6 +125,15 @@ async def upload_voice_sample(file: UploadFile = File(...), sample_name: str = "
     finally:
         if temp_target.exists():
             temp_target.unlink(missing_ok=True)
+
+
+@router.delete("/voice-sample/{sample_name}")
+async def delete_voice_sample(sample_name: str):
+    """Delete a stored voice profile and its embedding."""
+    success = voice_cloner.delete_voice_sample(sample_name)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Voice profile '{sample_name}' not found")
+    return {"success": True, "message": f"Deleted voice profile '{sample_name}'"}
 
 
 VOICE_SAMPLE_SCRIPTS = {

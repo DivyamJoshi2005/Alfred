@@ -183,6 +183,10 @@ export const settings = {
   }),
   models: () => request<Record<string, import('./types').ModelStatus>>('/api/settings/models'),
   voiceSamples: () => request<import('./types').VoiceSample[]>('/api/settings/voice-samples'),
+  deleteVoiceSample: (sampleName: string) =>
+    request<{ success: boolean; message: string }>(`/api/settings/voice-sample/${encodeURIComponent(sampleName)}`, {
+      method: 'DELETE',
+    }),
   getVoicePreviewUrl: (voice: string) => `${getApiBase()}/api/settings/voice-preview?voice=${encodeURIComponent(voice)}`,
   uploadVoiceSample: async (file: File, sampleName = 'my_voice') => {
     const form = new FormData()

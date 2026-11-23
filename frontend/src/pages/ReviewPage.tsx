@@ -357,7 +357,7 @@ export function ReviewPage() {
         hook_text: res.hook_text 
       } : c))
       setAudioTimestamps(prev => ({ ...prev, [clip.id]: Date.now() }))
-      alert(`Spoken audio hook generated using ${profile.cloningEnabled ? `Cloned Voice (${profile.sampleName || 'Custom'})` : profile.preset}!`)
+      console.log(`[Alfred] Spoken audio hook generated using ${profile.cloningEnabled ? `Cloned Voice (${profile.sampleName || 'Custom'})` : profile.preset}`)
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Voice generation failed')
     } finally {

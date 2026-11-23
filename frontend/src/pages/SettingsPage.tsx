@@ -19,10 +19,11 @@ import {
   Volume2,
   Play,
   ShieldAlert,
-  HelpCircle
+  HelpCircle,
+  Trash2
 } from 'lucide-react'
 import { Modal } from '../components/Modal'
-import { settings as settingsApi, accounts as accountsApi } from '../lib/api'
+import { settings as settingsApi, accounts as accountsApi, mediaUrl } from '../lib/api'
 import type { SocialAccount, ModelStatus, VoiceSample } from '../lib/types'
 import { KOKORO_VOICES, VOICE_DISPLAY_NAMES } from '../lib/types'
 import { cn } from '../lib/utils'
@@ -65,6 +66,9 @@ export function SettingsPage() {
   // Audition Voice Player
   const [auditioningVoice, setAuditioningVoice] = useState<string | null>(null)
   const auditionAudioRef = useRef<HTMLAudioElement | null>(null)
+  const [auditioningSample, setAuditioningSample] = useState<string | null>(null)
+  const sampleAudioRef = useRef<HTMLAudioElement | null>(null)
+  const [deletingSample, setDeletingSample] = useState<string | null>(null)
 
   useEffect(() => {
     return () => {
@@ -72,11 +76,19 @@ export function SettingsPage() {
         auditionAudioRef.current.pause()
         auditionAudioRef.current = null
       }
+      if (sampleAudioRef.current) {
+        sampleAudioRef.current.pause()
+        sampleAudioRef.current = null
+      }
     }
   }, [])
 
   const handlePlayVoiceAudition = (voiceId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
+    if (sampleAudioRef.current) {
+      sampleAudioRef.current.pause()
+      setAuditioningSample(null)
+    }
     if (auditionAudioRef.current) {
       auditionAudioRef.current.pause()
     }
@@ -90,6 +102,66 @@ export function SettingsPage() {
     audio.play().catch(err => console.warn('Audition playback failed:', err))
     audio.onended = () => setAuditioningVoice(null)
     audio.onerror = () => setAuditioningVoice(null)
+  }
+
+  const handlePlaySampleAudition = (sample: VoiceSample, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (auditionAudioRef.current) {
+      auditionAudioRef.current.pause()
+      setAuditioningVoice(null)
+    }
+    if (sampleAudioRef.current) {
+      sampleAudioRef.current.pause()
+    }
+    if (auditioningSample === sample.name) {
+      setAuditioningSample(null)
+      return
+    }
+    setAuditioningSample(sample.name)
+    const audioUrl = sample.path
+      ? mediaUrl(sample.path)
+      : settingsApi.getVoicePreviewUrl(sample.name)
+    const audio = new Audio(audioUrl)
+    sampleAudioRef.current = audio
+    audio.play().catch(err => {
+      console.warn('Sample audition playback failed:', err)
+      setAuditioningSample(null)
+    })
+    audio.onended = () => setAuditioningSample(null)
+    audio.onerror = () => setAuditioningSample(null)
+  }
+
+  const handleDeleteVoiceSample = async (sampleName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (!window.confirm(`Are you sure you want to delete voice profile "${sampleName}"?\n\nThis will permanently delete the recorded audio and acoustic embeddings.`)) {
+      return
+    }
+    if (sampleAudioRef.current && auditioningSample === sampleName) {
+      sampleAudioRef.current.pause()
+      setAuditioningSample(null)
+    }
+    setDeletingSample(sampleName)
+    try {
+      await settingsApi.deleteVoiceSample(sampleName)
+      const freshSamples = await settingsApi.voiceSamples()
+      setVoiceSamples(freshSamples)
+      if (selectedVoiceSample === sampleName) {
+        const nextSample = freshSamples.length > 0 ? freshSamples[0].name : null
+        setSelectedVoiceSample(nextSample)
+        if (nextSample) {
+          await settingsApi.update({ selected_voice_sample: nextSample })
+        } else {
+          await settingsApi.update({ selected_voice_sample: '', voice_cloning_enabled: 'false' })
+          setVoiceCloningEnabled(false)
+        }
+      }
+      setVoiceFeedback(`Voice profile "${sampleName}" deleted successfully.`)
+      setTimeout(() => setVoiceFeedback(null), 3500)
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to delete voice profile')
+    } finally {
+      setDeletingSample(null)
+    }
   }
 
   // Live Voice Recording
@@ -1002,6 +1074,7 @@ export function SettingsPage() {
               <div className="divide-y divide-border pt-2">
                 {voiceSamples.map((sample, i) => {
                   const isSelected = selectedVoiceSample === sample.name && voiceCloningEnabled
+                  const isAuditioning = auditioningSample === sample.name
                   return (
                     <div key={i} className="py-2.5 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
@@ -1024,6 +1097,32 @@ export function SettingsPage() {
                           </span>
                         )}
 
+                        {/* Audition Button: Listen to Created Voice Profile */}
+                        <button
+                          type="button"
+                          onClick={(e) => handlePlaySampleAudition(sample, e)}
+                          className={cn(
+                            "inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded transition-colors cursor-pointer border",
+                            isAuditioning
+                              ? "bg-accent text-white border-accent animate-pulse"
+                              : "bg-stone-100 hover:bg-stone-200 text-text border-stone-200"
+                          )}
+                          title="Preview / Listen to recorded voice profile"
+                        >
+                          {isAuditioning ? (
+                            <>
+                              <Square size={10} className="fill-white" />
+                              <span>Stop</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play size={10} className="fill-current" />
+                              <span>Listen</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Set Active Button */}
                         {sample.has_embedding && !isSelected && (
                           <button
                             type="button"
@@ -1033,6 +1132,21 @@ export function SettingsPage() {
                             Set Active
                           </button>
                         )}
+
+                        {/* Delete Profile Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteVoiceSample(sample.name, e)}
+                          disabled={deletingSample === sample.name}
+                          className="p-1.5 rounded text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
+                          title="Delete this voice profile"
+                        >
+                          {deletingSample === sample.name ? (
+                            <Loader2 size={13} className="animate-spin text-rose-600" />
+                          ) : (
+                            <Trash2 size={13} />
+                          )}
+                        </button>
                       </div>
                     </div>
                   )
