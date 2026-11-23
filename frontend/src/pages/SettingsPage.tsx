@@ -1187,23 +1187,45 @@ export function SettingsPage() {
 
           {/* Step-by-Step Fix Guide */}
           <div className="space-y-2.5 p-3.5 rounded-xl bg-stone-50 border border-stone-200">
-            <span className="font-semibold text-stone-900 text-xs block">
-              How to enable microphone access in your browser:
-            </span>
-            <ol className="space-y-2 text-[11px] text-stone-700 list-decimal list-inside pl-1">
-              <li className="leading-relaxed">
-                <span className="font-medium text-stone-900">Click the address bar icon:</span> Look at the top of your browser next to the URL (<span className="font-mono bg-stone-200 px-1 py-0.5 rounded text-[10px]">{typeof window !== 'undefined' ? window.location.host : 'localhost'}</span>) and click the <strong>lock 🔒</strong>, <strong>tune 🎛️</strong>, or <strong>permission settings</strong> icon.
-              </li>
-              <li className="leading-relaxed">
-                <span className="font-medium text-stone-900">Switch to "Allow":</span> Find <strong>Microphone</strong> and change it from <em>Block</em> to <strong>Allow</strong> (or click "Reset permission").
-              </li>
-              <li className="leading-relaxed">
-                <span className="font-medium text-stone-900">Click Try Again:</span> Click the button below to re-request microphone access and begin recording.
-              </li>
-            </ol>
-            <p className="text-[10px] text-stone-500 pt-1.5 border-t border-stone-200/80">
-              💡 <em>Linux / Desktop tip:</em> Make sure your microphone is not muted in PulseAudio / PipeWire sound settings.
-            </p>
+            {typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__) ? (
+              <>
+                <div className="flex items-center gap-1.5 font-semibold text-stone-900 text-xs">
+                  <span className="px-1.5 py-0.5 rounded bg-accent/20 text-accent font-bold text-[10px]">Desktop App</span>
+                  <span>Enabling microphone in native desktop:</span>
+                </div>
+                <ol className="space-y-2 text-[11px] text-stone-700 list-decimal list-inside pl-1">
+                  <li className="leading-relaxed">
+                    <span className="font-medium text-stone-900">Check Physical Device:</span> Ensure your microphone or headset is connected and selected as the default input device in system settings.
+                  </li>
+                  <li className="leading-relaxed">
+                    <span className="font-medium text-stone-900">Check System Mute:</span> On Linux (PipeWire / PulseAudio), verify your recording volume is unmuted in system sound preferences or <code className="bg-stone-200 px-1 py-0.5 rounded text-[10px]">pavucontrol</code>.
+                  </li>
+                  <li className="leading-relaxed">
+                    <span className="font-medium text-stone-900">Click Try Again:</span> Click the button below to prompt the native webview audio pipeline.
+                  </li>
+                </ol>
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-stone-900 text-xs block">
+                  How to enable microphone access in your browser:
+                </span>
+                <ol className="space-y-2 text-[11px] text-stone-700 list-decimal list-inside pl-1">
+                  <li className="leading-relaxed">
+                    <span className="font-medium text-stone-900">Click the address bar icon:</span> Look at the top of your browser next to the URL (<span className="font-mono bg-stone-200 px-1 py-0.5 rounded text-[10px]">{typeof window !== 'undefined' ? window.location.host : 'localhost'}</span>) and click the <strong>lock 🔒</strong>, <strong>tune 🎛️</strong>, or <strong>permission settings</strong> icon.
+                  </li>
+                  <li className="leading-relaxed">
+                    <span className="font-medium text-stone-900">Switch to "Allow":</span> Find <strong>Microphone</strong> and change it from <em>Block</em> to <strong>Allow</strong> (or click "Reset permission").
+                  </li>
+                  <li className="leading-relaxed">
+                    <span className="font-medium text-stone-900">Click Try Again:</span> Click the button below to re-request microphone access and begin recording.
+                  </li>
+                </ol>
+                <p className="text-[10px] text-stone-500 pt-1.5 border-t border-stone-200/80">
+                  💡 <em>Linux / Desktop tip:</em> Make sure your microphone is not muted in PulseAudio / PipeWire sound settings.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Action Buttons */}

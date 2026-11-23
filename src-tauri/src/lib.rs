@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use tauri::webview::{PermissionKind, PermissionResponse};
 
 #[tauri::command]
 fn get_backend_port() -> u16 {
@@ -20,6 +21,13 @@ fn get_backend_port() -> u16 {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .on_permission_request(|_webview, kind| {
+            match kind {
+                PermissionKind::Microphone => PermissionResponse::Allow,
+                PermissionKind::Notifications => PermissionResponse::Allow,
+                _ => PermissionResponse::Default,
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
