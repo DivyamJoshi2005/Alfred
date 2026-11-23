@@ -18,7 +18,6 @@ import {
   Globe,
   Flag,
   Square,
-  Columns,
   Scan,
 } from 'lucide-react'
 import type { Clip, SoundProfile, VoiceSample } from '../lib/types'
@@ -100,9 +99,20 @@ export function ClipTimelineEditor({
 }: ClipTimelineEditorProps) {
   const currentDuration = Math.max(0.1, endTime - startTime)
 
-  // Multi-frame Viewport Mode ('landscape' 16:9 | 'portrait' 9:16 Face Focus | 'split' Comparison)
-  const [viewportMode, setViewportMode] = useState<'landscape' | 'portrait' | 'split'>('landscape')
+  // Multi-frame Viewport Mode ('landscape' 16:9 | 'portrait' 9:16 Face Focus)
+  const [viewportMode, setViewportMode] = useState<'landscape' | 'portrait'>(
+    framingMode === 'face_focus' ? 'portrait' : 'landscape'
+  )
   const [showFaceViewfinder, setShowFaceViewfinder] = useState(true)
+
+  // Keep viewportMode in sync if parent framingMode prop changes
+  useEffect(() => {
+    if (framingMode === 'face_focus') {
+      setViewportMode('portrait')
+    } else if (framingMode === 'presentation_fit') {
+      setViewportMode('landscape')
+    }
+  }, [framingMode])
 
   // Compute average face center from YOLO crop coordinates
   const avgFaceCenterPct = React.useMemo(() => {
@@ -238,7 +248,6 @@ export function ClipTimelineEditor({
   const [dragTarget, setDragTarget] = useState<'start' | 'end' | 'hook' | 'playhead' | null>(null)
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const splitVideoRef = useRef<HTMLVideoElement | null>(null)
   const hookAudioRef = useRef<HTMLAudioElement | null>(null)
   const sequencerTrackRef = useRef<HTMLDivElement | null>(null)
 
@@ -301,11 +310,9 @@ export function ClipTimelineEditor({
           // Rendered video is relative to clip start
           const rel = Math.max(0, Math.min(currentDuration, clamped - startTime))
           videoRef.current.currentTime = rel
-          if (splitVideoRef.current) splitVideoRef.current.currentTime = rel
         } else {
           // Master source video uses absolute timestamp
           videoRef.current.currentTime = clamped
-          if (splitVideoRef.current) splitVideoRef.current.currentTime = clamped
         }
       }
     },
@@ -332,7 +339,6 @@ export function ClipTimelineEditor({
     if (!videoRef.current) return
     if (isPlaying) {
       videoRef.current.pause()
-      if (splitVideoRef.current) splitVideoRef.current.pause()
       if (hookAudioRef.current) hookAudioRef.current.pause()
       setIsPlaying(false)
       setIsDucked(false)
@@ -346,9 +352,6 @@ export function ClipTimelineEditor({
         .play()
         .then(() => {
           setIsPlaying(true)
-          if (splitVideoRef.current) {
-            splitVideoRef.current.play().catch(() => {})
-          }
         })
         .catch((err) => console.warn('Play prevented:', err))
     }
@@ -360,11 +363,6 @@ export function ClipTimelineEditor({
     const vTime = videoRef.current.currentTime
     const absTime = previewMode === 'rendered' ? startTime + vTime : vTime
     setCurrentTime(absTime)
-
-    // Keep split video element in sync
-    if (splitVideoRef.current && Math.abs(splitVideoRef.current.currentTime - vTime) > 0.15) {
-      splitVideoRef.current.currentTime = vTime
-    }
 
     // Clip boundary limit when playing inside clip
     if (absTime >= endTime) {
@@ -581,6 +579,7 @@ export function ClipTimelineEditor({
               onClick={() => {
                 setPreviewMode('live')
                 setViewportMode('landscape')
+                onFramingModeChange?.('presentation_fit')
                 seekVideo(startTime)
               }}
               className={cn(
@@ -589,7 +588,7 @@ export function ClipTimelineEditor({
                   ? 'bg-accent text-white shadow-xs font-semibold'
                   : 'text-stone-400 hover:text-white'
               )}
-              title="16:9 Landscape widescreen view with YOLO face safe-zone"
+              title="16:9 Landscape widescreen presentation fit"
             >
               <MonitorPlay size={12} />
               16:9 Landscape
@@ -600,6 +599,7 @@ export function ClipTimelineEditor({
               onClick={() => {
                 setPreviewMode('live')
                 setViewportMode('portrait')
+                onFramingModeChange?.('face_focus')
                 seekVideo(startTime)
               }}
               className={cn(
@@ -612,25 +612,6 @@ export function ClipTimelineEditor({
             >
               <Smartphone size={12} />
               9:16 Portrait (Face Focus)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPreviewMode('live')
-                setViewportMode('split')
-                seekVideo(startTime)
-              }}
-              className={cn(
-                'px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 cursor-pointer',
-                previewMode === 'live' && viewportMode === 'split'
-                  ? 'bg-accent text-white shadow-xs font-semibold'
-                  : 'text-stone-400 hover:text-white'
-              )}
-              title="Compare 16:9 widescreen and 9:16 portrait side-by-side"
-            >
-              <Columns size={12} />
-              Split View
             </button>
 
             {renderedPath && (
@@ -654,8 +635,8 @@ export function ClipTimelineEditor({
             )}
           </div>
 
-          {/* YOLO Face Safe-Zone Toggle (when in landscape or split live preview) */}
-          {previewMode === 'live' && viewportMode !== 'portrait' && (
+          {/* YOLO Face Safe-Zone Toggle (when in landscape live preview) */}
+          {previewMode === 'live' && viewportMode === 'landscape' && (
             <button
               type="button"
               onClick={() => setShowFaceViewfinder(!showFaceViewfinder)}
@@ -680,7 +661,7 @@ export function ClipTimelineEditor({
       </div>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* VIDEO VIEWPORT MONITORS: Multi-Frame (16:9 / 9:16 / Split)    */}
+      {/* VIDEO VIEWPORT MONITORS: Multi-Frame (16:9 / 9:16 Portrait)   */}
       {/* ───────────────────────────────────────────────────────────── */}
       {previewMode === 'rendered' ? (
         /* Rendered 9:16 Short View */
@@ -771,101 +752,6 @@ export function ClipTimelineEditor({
           <div className="absolute bottom-2 inset-x-2 px-2.5 py-1 rounded bg-black/70 backdrop-blur-xs flex items-center justify-between text-[10px] text-stone-300 font-mono">
             <span>{formatTime(startTime)} - {formatTime(endTime)}</span>
             <span className="text-accent font-semibold">{currentDuration.toFixed(1)}s</span>
-          </div>
-        </div>
-      ) : viewportMode === 'split' ? (
-        /* Live Split View: 16:9 Left + 9:16 Right */
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mx-auto w-full max-w-4xl items-center">
-          {/* Left: 16:9 Master Landscape View */}
-          <div className="md:col-span-7 relative rounded-xl overflow-hidden bg-black border border-stone-800 shadow-inner group flex items-center justify-center aspect-video max-h-[300px]">
-            <video
-              ref={videoRef}
-              src={activeVideoSrc}
-              onLoadedMetadata={handleLoadedMetadata}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={() => {
-                if (!isLooping) setIsPlaying(false)
-              }}
-              playsInline
-              className="w-full h-full object-contain"
-            />
-
-            {/* YOLO Viewfinder Box Overlay */}
-            {showFaceViewfinder && (
-              <div className="absolute inset-0 pointer-events-none">
-                <div
-                  className="absolute top-0 bottom-0 left-0 bg-black/50"
-                  style={{ width: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82))}%` }}
-                />
-                <div
-                  className="absolute top-0 bottom-0 border-2 border-emerald-400 flex flex-col justify-between p-1.5 shadow-[0_0_12px_rgba(52,211,153,0.3)]"
-                  style={{
-                    left: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82))}%`,
-                    width: '31.64%',
-                  }}
-                >
-                  <div className="text-[9px] font-mono font-bold text-emerald-300 bg-black/80 px-1 rounded border border-emerald-500/40 w-fit">
-                    9:16 Crop
-                  </div>
-                </div>
-                <div
-                  className="absolute top-0 bottom-0 right-0 bg-black/50"
-                  style={{
-                    left: `${Math.max(0, Math.min(100 - 31.64, avgFaceCenterPct - 15.82)) + 31.64}%`,
-                  }}
-                />
-              </div>
-            )}
-
-            <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/75 text-stone-300 text-[10px] font-mono border border-white/10 flex items-center gap-1">
-              <MonitorPlay size={10} className="text-accent" />
-              16:9 Landscape Master
-            </div>
-
-            {!isPlaying && (
-              <button
-                type="button"
-                onClick={handleTogglePlay}
-                className="absolute inset-0 m-auto w-11 h-11 rounded-full bg-accent/90 hover:bg-accent text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg cursor-pointer"
-                title="Play preview"
-              >
-                <Play size={18} className="fill-white ml-0.5" />
-              </button>
-            )}
-
-            <div className="absolute bottom-2 inset-x-2 px-2.5 py-0.5 rounded bg-black/65 backdrop-blur-xs flex items-center justify-between text-[10px] text-stone-300 font-mono">
-              <span>{formatTime(currentTime)}</span>
-              <span className="text-accent">{currentDuration.toFixed(1)}s</span>
-            </div>
-          </div>
-
-          {/* Right: 9:16 Portrait Face Focus */}
-          <div className="md:col-span-5 relative rounded-2xl overflow-hidden bg-black border-2 border-stone-700 shadow-xl group flex items-center justify-center aspect-[9/16] max-h-[300px] w-full max-w-[190px] mx-auto">
-            <video
-              ref={splitVideoRef}
-              src={activeVideoSrc}
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-              style={{
-                objectPosition: `${avgFaceCenterPct}% center`,
-              }}
-            />
-
-            <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/80 text-emerald-300 text-[10px] font-mono border border-emerald-500/30 flex items-center gap-1">
-              <Smartphone size={10} />
-              9:16 Face Focus ({Math.round(avgFaceCenterPct)}%)
-            </div>
-
-            {isDucked && (
-              <div className="absolute top-8 left-2 px-2 py-0.5 rounded bg-rose-600/90 text-white text-[9px] font-bold shadow animate-pulse">
-                Ducked
-              </div>
-            )}
-
-            <div className="absolute bottom-2 inset-x-2 px-2 py-0.5 rounded bg-black/65 text-center text-[10px] text-stone-300 font-mono">
-              YOLO Auto-Centered
-            </div>
           </div>
         </div>
       ) : (
@@ -1351,112 +1237,6 @@ export function ClipTimelineEditor({
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* VIDEO FRAMING & PRESENTATION (9:16 Portrait vs 16:9 Fit)     */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400">
-            Video Framing & Crop Mode (9:16 Shorts)
-          </label>
-          <span className="text-[11px] text-stone-400">
-            Choose how Alfred crops and formats this clip when re-rendering
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          {/* Card 1: Face Focus (9:16 Portrait) */}
-          <div
-            onClick={() => {
-              onFramingModeChange?.('face_focus')
-              setViewportMode('portrait')
-            }}
-            className={cn(
-              'p-3.5 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between gap-2',
-              (framingMode || 'presentation_fit') === 'face_focus'
-                ? 'border-accent bg-accent/20 ring-1 ring-accent'
-                : 'border-stone-800 bg-stone-850 hover:border-stone-700'
-            )}
-          >
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
-                  <Smartphone size={14} className={(framingMode || 'presentation_fit') === 'face_focus' ? 'text-accent' : 'text-stone-400'} />
-                  Face & Speaker Focus
-                </div>
-                {(framingMode || 'presentation_fit') === 'face_focus' && <Check size={14} className="text-accent" />}
-              </div>
-              <p className="text-[11px] text-stone-400 leading-relaxed">
-                YOLO AI tracks the speaker's face and crops cleanly into full 9:16 portrait.
-              </p>
-            </div>
-            <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 text-[10px] font-medium w-fit">
-              ★ Podcasts, Talks & Vlogs
-            </span>
-          </div>
-
-          {/* Card 2: Presentation Fit (Full 16:9 + Blurred BG) */}
-          <div
-            onClick={() => {
-              onFramingModeChange?.('presentation_fit')
-              setViewportMode('landscape')
-            }}
-            className={cn(
-              'p-3.5 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between gap-2',
-              (framingMode || 'presentation_fit') === 'presentation_fit'
-                ? 'border-accent bg-accent/20 ring-1 ring-accent'
-                : 'border-stone-800 bg-stone-850 hover:border-stone-700'
-            )}
-          >
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
-                  <MonitorPlay size={14} className={(framingMode || 'presentation_fit') === 'presentation_fit' ? 'text-accent' : 'text-stone-400'} />
-                  Presentation Fit (16:9)
-                </div>
-                {(framingMode || 'presentation_fit') === 'presentation_fit' && <Check size={14} className="text-accent" />}
-              </div>
-              <p className="text-[11px] text-stone-400 leading-relaxed">
-                Keeps complete 16:9 widescreen presentation in center with blurred video backdrop.
-              </p>
-            </div>
-            <span className="inline-block px-1.5 py-0.5 rounded bg-sky-950/70 text-sky-300 border border-sky-800/60 text-[10px] font-medium w-fit">
-              Slides, Code & Screen Demos
-            </span>
-          </div>
-
-          {/* Card 3: Split Screen (2-Tier Stack) */}
-          <div
-            onClick={() => {
-              onFramingModeChange?.('split_screen')
-              setViewportMode('split')
-            }}
-            className={cn(
-              'p-3.5 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between gap-2',
-              (framingMode || 'presentation_fit') === 'split_screen'
-                ? 'border-accent bg-accent/20 ring-1 ring-accent'
-                : 'border-stone-800 bg-stone-850 hover:border-stone-700'
-            )}
-          >
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
-                  <Columns size={14} className={(framingMode || 'presentation_fit') === 'split_screen' ? 'text-accent' : 'text-stone-400'} />
-                  Two-Tier Split Screen
-                </div>
-                {(framingMode || 'presentation_fit') === 'split_screen' && <Check size={14} className="text-accent" />}
-              </div>
-              <p className="text-[11px] text-stone-400 leading-relaxed">
-                Stacked layout: Speaker face in top frame and presentation or demo in bottom frame.
-              </p>
-            </div>
-            <span className="inline-block px-1.5 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-800/60 text-[10px] font-medium w-fit">
-              Tutorials & Gaming
-            </span>
           </div>
         </div>
       </div>
